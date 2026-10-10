@@ -204,3 +204,20 @@ AIによる実機検証手順（画像パスは検証対象に合わせて指定
 実画像で調整するための暫定方式として、重みは-1〜1の符号付き値を使います。今回の値は好きのみなら正の出現率、嫌いのみなら負の出現率、共通なら前回の重み、どちらにもない場合は0です。次の重みは `0.5 × 前回 + 0.5 × 今回`。共通タグは維持し、新規共通タグは判断保留で重みを付けません。未出現の以前のタグは半減します。値が0なら除去、正ならpositive、負ならnegative候補とし、negative辞書には絶対値を返します。例えば前回1のタグを嫌い画像すべてが持つ場合、次は0で除去され、もう一度同じ評価を受けると-0.5になります。
 
 返却値には群別出現率、共通タグ、符号付き重み、positive/negative辞書、継承率0.5を含めます。入力を変更せず、DB・ファイルへ保存しません。初期参考画像からの条件作成とComfyUI用プロンプトへの変換・実行は後続工程です。固定データと工程08のタグ解析結果で検証済みですが、実画像での生成品質と精密な数式・移行判定は引き続き保留です。
+
+## 可変枚数・アスペクト比の生成（工程10）
+
+`backend/generation.py` の `generate_images(client, settings, checkpoint=..., positive=..., negative=...)` は設定のimage_count・width・heightを使い、標準のCheckpointLoaderSimple→CLIPTextEncode→KSampler→VAEDecode→PreviewImageで生成します。[公式API例](https://github.com/Comfy-Org/ComfyUI/blob/master/script_examples/basic_api_example.py)と実機のノード定義を確認しました。checkpointは呼び出し側が明示し、恒久的なモデル選定は保留です。アプリ利用者向けのプロンプト入力UIは追加していません。タグからの条件変換と画面への接続は工程13です。
+
+seedを画像と確実に対応させるためbatch_size=1で要求枚数を順番に実行します。実行ごとに暗号学的乱数で新しいseedを採番し、同一実行内の重複を避けます。seedはSQLite INTEGERに保存できる0〜2^63−1。返却結果は各画像のbytes・position・seed・prompt_id・投入workflowと、共通の生成条件（モデル・プロンプト・枚数・寸法・steps・cfg・sampler・scheduler・denoise・seed一覧）を保持します。寸法は標準ノードの制約に合わせ16〜16384の8の倍数を要求し、設定値の丸めは行いません。
+
+`/view`で画像を取得し、形式・破損・要求寸法との一致を検証します。出力欠落・余分な画像・取得失敗・不正画像では部分結果を返しません。待機上限は候補群全体で既定300秒。DBとローカル画像ファイルは変更せず、結果はメモリ内です。全画像のタグ付けとステージング・一括保存は工程11。ComfyUI側の一時画像は残り、タイムアウト後もリモート実行が続く可能性があります。
+
+AIによる実機確認（導入済みcheckpointを指定、プロンプトは検証スクリプト内で用意）：
+
+```powershell
+.venv/Scripts/python -m scripts.check_generation boleromixIllustrious_v402.safetensors --count 2 --width 256 --height 384 --steps 4
+.venv/Scripts/python -m scripts.check_generation boleromixIllustrious_v402.safetensors --count 3 --width 384 --height 256 --steps 4
+```
+
+検証用の低stepsで枚数・寸法・取得を確認した手順です。生成品質や最適なモデル・サンプリング条件の評価は未実施です。
