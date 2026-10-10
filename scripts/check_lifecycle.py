@@ -1,10 +1,12 @@
 """Exercise automatic launch, reload, tab close and Chrome crash with real SSE."""
 
+import os
 import socket
 import tempfile
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -85,5 +87,9 @@ def verify(crash: bool) -> None:
 
 
 if __name__ == "__main__":
-    verify(crash=False)
-    verify(crash=True)
+    with tempfile.TemporaryDirectory(prefix="loop-lifecycle-storage-") as directory:
+        config = Path(directory) / "config.toml"
+        config.write_text('storage_dir = "data"\n', encoding="utf-8")
+        with patch.dict(os.environ, {"LOOP_IMAGE_CONFIG": str(config)}):
+            verify(crash=False)
+            verify(crash=True)

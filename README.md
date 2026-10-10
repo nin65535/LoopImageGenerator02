@@ -4,7 +4,7 @@
 
 LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
 
-> **開発状況：工程15・失敗復旧・整合性・動作負荷対策（2026-10-10時点）**
+> **開発状況：工程16・統合テスト・配布準備 完了（2026-10-10時点、工程17・人力受入検証は未実施）**
 > 参考画像から次世代生成までを接続済みです。選んだ世代の祖先から末端まで履歴を表示し、過去世代からの分岐・兄弟枝の切替・保存後の再開ができます。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
 
 ## 使い方
@@ -29,7 +29,7 @@ LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き�
 
 同じ選択から繰り返し生成しても、乱数seedが変わるため異なる結果を探索できます。画像拡大や高解像度仕上げの機能は対象外です。
 
-## 特徴（予定）
+## 特徴
 
 - プロンプト不要。参考画像と好き／嫌いの選択を主な入力とする。
 - 生成枚数とアスペクト比はコンフィグから変更可能。
@@ -93,8 +93,8 @@ APIの待受開始後、`http://127.0.0.1:8000` を専用Chromeで自動表示�
 
 ```powershell
 .venv/Scripts/python -m pytest
-.venv/Scripts/python -m ruff check backend tests scripts/check_browser.py scripts/check_lifecycle.py scripts/check_projects.py
-.venv/Scripts/python -m ruff format --check backend tests scripts/check_browser.py scripts/check_lifecycle.py scripts/check_projects.py
+.venv/Scripts/python -m ruff check backend tests scripts
+.venv/Scripts/python -m ruff format --check backend tests scripts
 npm --prefix frontend run format:check
 npm --prefix frontend run typecheck
 npm --prefix frontend test
@@ -128,11 +128,11 @@ APIテストは疎通・静的配信・プロジェクト作成・入力検証�
 
 画面の「新規プロジェクト」で名前を入力し、「作成する」を押します。名前の前後の空白は除去し、1〜200文字を受け付けます。同名でもIDで区別します。「プロジェクトを選んで再開」から保存済みプロジェクトを開けます。アプリを終了してもSQLiteに保持され、次の起動で一覧から選択できます。選択中のプロジェクトは画面内の一時状態で、再読み込み後は選び直します。
 
-APIは `POST /api/projects`（JSON: `{"name":"名前"}`）、`GET /api/projects`、`GET /api/projects/{id}`。詳細には保存済み世代数と参考画像の登録状態を返し、存在しないIDは404、不正入力は422になります。参考画像未登録時はDBの `initial_image_path` を空文字、APIでは `null` として扱います。プロジェクト作成ではGenerationや画像行を作りません。保存済み世代の画像一覧と評価UIは工程12、枝の再開は工程14の範囲です。
+APIは `POST /api/projects`（JSON: `{"name":"名前"}`）、`GET /api/projects`、`GET /api/projects/{id}`。詳細には保存済み世代数と参考画像の登録状態を返し、存在しないIDは404、不正入力は422になります。参考画像未登録時はDBの `initial_image_path` を空文字、APIでは `null` として扱います。プロジェクト作成ではGenerationや画像行を作りません。保存済み世代の画像一覧・評価UI・枝の再開に対応します。
 
 プロジェクトを開き、参考画像を1枚ドロップするか「参考画像を選択」で登録します。PNG・JPEG・WebPの静止画像、最大20MiB・2,500万画素に対応します。拡張子や申告された形式に依存せず実際に画像を検証し、保存先の `references/` にランダムな名前で保存します。登録済み画像は再開時にも表示され、上書きはできません。別の参考画像を使う場合は新規プロジェクトを作成してください。
 
-`PUT /api/projects/{id}/initial-image` は画像バイナリを直接受け付けます（multipart形式ではありません）。成功時は更新されたプロジェクトを返します。容量・画素数超過は413、未対応形式・アニメーションは415、破損画像は422、登録済みは409です。`GET /api/projects/{id}/initial-image` で画像を取得できます。登録失敗時はDBをロールバックし、作成したファイルを清掃します。参考画像登録でもGeneration・画像行は作りません。プロセス強制終了時の残骸清掃は工程15の範囲です。
+`PUT /api/projects/{id}/initial-image` は画像バイナリを直接受け付けます（multipart形式ではありません）。成功時は更新されたプロジェクトを返します。容量・画素数超過は413、未対応形式・アニメーションは415、破損画像は422、登録済みは409です。`GET /api/projects/{id}/initial-image` で画像を取得できます。登録失敗時はDBをロールバックし、作成したファイルを清掃します。参考画像登録でもGeneration・画像行は作りません。プロセス強制終了時の残骸は次回起動時に清掃します。
 
 画像選択・ドロップ・破損画像からの再試行・再読み込み・再起動後の表示を実Chromeで検証する手順：
 
@@ -158,7 +158,7 @@ API起動時に保存先を作成し、`loop-image-generator.sqlite3` に `sql/s
 .venv/Scripts/python -c "from backend.config import load_settings; from backend.database import Database; Database(load_settings().database_path).initialize()"
 ```
 
-`Database.connect()` は毎接続で外部キーを有効化して終了時に閉じ、`Database.transaction()` は成功時コミット・例外時ロールバックを行います。枚数と画像行数の一致、評価IDの整合性、完成Generationの保存とファイル管理は工程11で実装します。既存DBの制約変更を移行する仕組みは未実装です。
+`Database.connect()` は毎接続で外部キーを有効化して終了時に閉じ、`Database.transaction()` は成功時コミット・例外時ロールバックを行います。枚数と画像行数の一致、評価IDの整合性、完成Generationの保存とファイル管理は実装済みです。既存DBの制約変更を移行する仕組みは未実装です。
 
 ## 開発方針
 
@@ -177,7 +177,7 @@ V1は手作業による開発でしたが、V2は**人間による手打ちコ�
 
 ## ComfyUIワークフロー実行（工程07）
 
-`backend/comfyui.py` がAPI形式JSONの読み込み、`POST /prompt`、返却されたprompt_idの`GET /history/{prompt_id}`監視を担当します。成功は履歴のcompleted=trueとstatus_str=successで判定し、outputsと履歴全体を返します。HTTPエラー・接続失敗・不正JSON・実行エラー・中断は例外として診断情報と取得済みprompt_idを保持します。タグ解析と生成UIへの接続は後続工程です。
+`backend/comfyui.py` がAPI形式JSONの読み込み、`POST /prompt`、返却されたprompt_idの`GET /history/{prompt_id}`監視を担当します。成功は履歴のcompleted=trueとstatus_str=successで判定し、outputsと履歴全体を返します。HTTPエラー・接続失敗・不正JSON・実行エラー・中断は例外として診断情報と取得済みprompt_idを保持します。タグ解析と生成UIへの接続は実装済みです。
 
 AIによる実機検証手順（起動済みComfyUIをconfig.tomlのURLで使用）：
 
@@ -261,3 +261,14 @@ AIによる実機検証は既存プロジェクトを変更しない一時DB・�
 ```powershell
 .venv/Scripts/python -m scripts.check_generation_ui
 ```
+
+## 工程16の自動検証・配布準備と工程17の人力受入
+
+[受入確認表](documents/ACCEPTANCE.md) に前提環境・自動検証・手動操作の確認項目をまとめています。AIが設定と起動を担当し、人間によるコード修正は不要です。
+
+```powershell
+.venv/Scripts/python -m scripts.check_acceptance
+.venv/Scripts/python -m scripts.prepare_distribution
+```
+
+受入検証は実ComfyUIとChromeで3世代・7画像、50%継承、2枚から3枚への変更、縦横比変更、分岐と再起動後の再開を確認します。一時保存先を使用します。配布候補ZIPは `artifacts/LoopImageGeneratorV2.zip`。Pythonソースとビルド済みUIを含み、利用時のNode.jsは不要です。AIが展開先で仮想環境と `requirements.txt` の依存を準備します。工程16は完了です。表示ウィンドウでの人力受入検証は工程17で実施します。別PC・新規Python環境での検証と最終配布方式は保留です。
