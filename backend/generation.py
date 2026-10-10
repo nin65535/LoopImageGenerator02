@@ -1,4 +1,4 @@
-"""Generate candidates in memory; completed Generation persistence is a later stage."""
+"""Generate candidates in memory for tagging and completed Generation persistence."""
 
 import asyncio
 import io

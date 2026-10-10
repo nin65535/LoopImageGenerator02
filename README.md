@@ -221,3 +221,17 @@ AIによる実機確認（導入済みcheckpointを指定、プロンプトは�
 ```
 
 検証用の低stepsで枚数・寸法・取得を確認した手順です。生成品質や最適なモデル・サンプリング条件の評価は未実施です。
+
+## 完成Generationの保存（工程11）
+
+`backend/generation_storage.py` の `tag_and_save_generation` は工程10の生成結果を受け取り、全画像のタグ付けに成功してから `save_generation` を呼び出します。正常な空タグは `{}` として保存し、出力欠落・タグ付け失敗時は保存しません。要求枚数・タグ数・連続position・seed一覧の一致と、親Generationのプロジェクト所属、好き／嫌いIDの親所属・整数型・重複・交差・最低1評価を検証します。ルートの親IDと選択はnullです。
+
+画像は保存先の `staging/<ランダムID>/` に書き込み、単一トランザクション内でGenerationと全画像行を追加し、`generations/<ランダムID>/` へ移動してからコミットします。通常の書込・移動・DBコミット失敗ではロールバックし、今回のファイルも清掃します。既存世代は変更せず、子の評価と生成条件をJSONスナップショットとして保持します。保存開始後のキャンセルでは保存処理の終了を待ちます。プロセス強制終了・電源断による残骸の清掃は工程15、API・UIからの生成接続は工程13です。
+
+AIによる実機検証は既存プロジェクトを変更しない一時DB・保存先で行います。終了時にローカル検証データを清掃します（ComfyUI側の入力・一時画像は残ります）。
+
+```powershell
+.venv/Scripts/python -m scripts.check_generation_storage boleromixIllustrious_v402.safetensors --count 2
+```
+
+256×384・4stepsで生成とタグ付けを実行し、DB再接続後の枚数・生成条件・個別seed・タグJSON・画像bytesを照合します。
