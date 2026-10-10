@@ -1,6 +1,8 @@
 """Connect reference images and transient selections to completed generations."""
 
 import json
+import logging
+import sqlite3
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -34,9 +36,20 @@ def prompt(weights: dict[str, float], positive: bool) -> str:
     )
 
 
-def flow_router(database: Database, settings: Settings) -> APIRouter:
+def flow_router(
+    database: Database, settings: Settings, running: set[int] | None = None
+) -> APIRouter:
     router = APIRouter(prefix="/api/projects", tags=["generation flow"])
-    running: set[int] = set()
+    running = running if running is not None else set()
+
+    @router.get("/{project_id}/generation-status")
+    async def status(project_id: int) -> dict:
+        with database.connect() as connection:
+            if not connection.execute(
+                "SELECT id FROM projects WHERE id = ?", (project_id,)
+            ).fetchone():
+                raise HTTPException(404, "Project not found")
+        return {"running": project_id in running}
 
     @router.post("/{project_id}/generations", status_code=201)
     async def generate(project_id: int, body: GenerateRequest) -> dict:
@@ -139,6 +152,11 @@ def flow_router(database: Database, settings: Settings) -> APIRouter:
             raise HTTPException(502, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        except (OSError, sqlite3.Error) as exc:
+            logging.getLogger("uvicorn.error").exception("Generation storage failed")
+            raise HTTPException(
+                500, "Cannot save generation; reload saved results before retrying"
+            ) from exc
         finally:
             running.discard(project_id)
 

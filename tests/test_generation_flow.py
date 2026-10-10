@@ -1,11 +1,14 @@
+import asyncio
 import io
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend.comfyui import ComfyUIError
+from backend.comfyui import ComfyUIError, ComfyUITimeout
 from backend.config import Settings
 from backend.generation import GeneratedImage, GenerationResult
 from backend.main import create_app
@@ -83,3 +86,58 @@ def test_invalid_selection_and_tag_failure_do_not_save(flow, monkeypatch):
     with database.connect() as connection:
         assert connection.execute("SELECT count(*) FROM generations").fetchone()[0] == 0
     monkeypatch.undo()
+
+
+@pytest.mark.parametrize(
+    "error,code",
+    [(ComfyUIError("stopped"), 502), (ComfyUITimeout("timeout"), 504), (OSError("disk full"), 500)],
+)
+def test_failures_preserve_history_and_allow_retry(flow, monkeypatch, error, code):
+    client, database, project, calls = flow
+    url = f"/api/projects/{project}/generations"
+    root = client.post(url, json={"checkpoint": "model"}).json()["id"]
+    before = client.get(url).json()
+    original = __import__("backend.generation_flow", fromlist=["generate_images"]).generate_images
+
+    async def fail(*args, **kwargs):
+        raise error
+
+    body = {
+        "parent_id": root,
+        "selection": {"liked": [before[0]["images"][0]["id"]], "disliked": []},
+    }
+    monkeypatch.setattr("backend.generation_flow.generate_images", fail)
+    assert client.post(url, json=body).status_code == code
+    assert client.get(url).json() == before
+    assert client.get(f"/api/projects/{project}/generation-status").json() == {"running": False}
+    monkeypatch.setattr("backend.generation_flow.generate_images", original)
+    assert client.post(url, json=body).status_code == 201
+
+
+def test_reload_and_concurrent_submission_observe_one_running_generation(flow, monkeypatch):
+    client, database, project, calls = flow
+    entered, release = threading.Event(), threading.Event()
+    from backend import generation_flow
+
+    original = generation_flow.generate_images
+
+    async def pending(*args, **kwargs):
+        entered.set()
+        await asyncio.to_thread(release.wait, 5)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(generation_flow, "generate_images", pending)
+    url = f"/api/projects/{project}/generations"
+    with ThreadPoolExecutor() as pool:
+        future = pool.submit(client.post, url, json={"checkpoint": "model"})
+        try:
+            assert entered.wait(5)
+            assert client.get(url).json() == []
+            assert client.get(url).headers["X-Generation-Running"] == "true"
+            assert client.get(f"/api/projects/{project}/generation-status").json()["running"]
+            assert client.post(url, json={"checkpoint": "model"}).status_code == 409
+        finally:
+            release.set()
+        assert future.result().status_code == 201
+    assert len(client.get(url).json()) == 1
+    assert client.get(url).headers["X-Generation-Running"] == "false"

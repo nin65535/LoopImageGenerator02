@@ -3,17 +3,20 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import FileResponse
 
 from backend.database import Database
 
 
-def generation_router(database: Database, storage: Path) -> APIRouter:
+def generation_router(
+    database: Database, storage: Path, running: set[int] | None = None
+) -> APIRouter:
     router = APIRouter(prefix="/api/projects", tags=["generations"])
 
     @router.get("/{project_id}/generations")
-    def list_generations(project_id: int) -> list[dict]:
+    def list_generations(project_id: int, response: Response) -> list[dict]:
+        response.headers["X-Generation-Running"] = str(project_id in (running or set())).lower()
         with database.connect() as connection:
             if (
                 connection.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()

@@ -107,3 +107,9 @@ def test_invalid_parameters(kwargs):
 def test_unaligned_dimensions_rejected():
     with pytest.raises(ValueError):
         run(width=65)
+
+
+def test_download_size_limit(monkeypatch):
+    monkeypatch.setattr("backend.generation.MAX_BYTES", 8)
+    with pytest.raises(ComfyUIError, match="exceeds"):
+        run()

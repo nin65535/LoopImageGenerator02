@@ -223,6 +223,21 @@ export default function Generations({
           selection: selection ?? null,
         }),
       });
+      if (response.status === 409) {
+        // A reload or another tab can leave an existing request running on the server.
+        let running = true;
+        while (running && alive.current) {
+          const status = await fetch(
+            `/api/projects/${projectId}/generation-status`,
+          );
+          if (!status.ok) throw new Error("Status retrieval failed");
+          running = ((await status.json()) as { running: boolean }).running;
+          if (running)
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        if (alive.current) setRetry((value) => value + 1);
+        return;
+      }
       if (!response.ok) throw new Error("Generation failed");
       const completed = (await response.json()) as { id: number };
       if (!alive.current) return;
@@ -247,12 +262,39 @@ export default function Generations({
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function pollStatus() {
+      try {
+        const response = await fetch(
+          `/api/projects/${projectId}/generation-status`,
+          {
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) throw new Error("Status retrieval failed");
+        const status = (await response.json()) as { running: boolean };
+        if (controller.signal.aborted) return;
+        if (status.running) timer = setTimeout(pollStatus, 1000);
+        else setRetry((value) => value + 1);
+      } catch {
+        if (!controller.signal.aborted) {
+          setBusy(false);
+          setError("生成状況を取得できません。保存結果を再読込してください。");
+        }
+      }
+    }
     setState("loading");
     fetch(`/api/projects/${projectId}/generations`, {
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("Generation retrieval failed");
+        const running =
+          response.headers?.get("X-Generation-Running") === "true";
+        if (!controller.signal.aborted) {
+          setBusy(running);
+          if (running) timer = setTimeout(pollStatus, 1000);
+        }
         return response.json() as Promise<Generation[]>;
       })
       .then((data) => {
@@ -264,18 +306,30 @@ export default function Generations({
       .catch(() => {
         if (!controller.signal.aborted) setState("error");
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
   }, [projectId, retry]);
   const generation = generations.find((item) => item.id === selected);
   const byId = new Map(generations.map((item) => [item.id, item]));
+  const children = new Map<number, Generation[]>();
+  for (const item of generations) {
+    if (item.parent_id !== null) {
+      const siblings = children.get(item.parent_id) ?? [];
+      siblings.push(item);
+      children.set(item.parent_id, siblings);
+    }
+  }
   const path: Generation[] = [];
   const visited = new Set<number>();
   let cursor = generation;
   while (cursor && !visited.has(cursor.id)) {
     visited.add(cursor.id);
-    path.unshift(cursor);
+    path.push(cursor);
     cursor = cursor.parent_id ? byId.get(cursor.parent_id) : undefined;
   }
+  path.reverse();
   return (
     <section aria-labelledby="generations-title">
       <h2 id="generations-title">候補画像を評価</h2>
@@ -343,23 +397,21 @@ export default function Generations({
                   busy={busy}
                   onGenerate={(id, selection) => void generate(id, selection)}
                 />
-                {generations.some((child) => child.parent_id === item.id) && (
+                {children.has(item.id) && (
                   <nav aria-label={`Generation #${item.id}の子世代`}>
-                    {generations
-                      .filter((child) => child.parent_id === item.id)
-                      .map((child) => (
-                        <button
-                          key={child.id}
-                          disabled={busy}
-                          aria-pressed={path[index + 1]?.id === child.id}
-                          onClick={() => {
-                            rememberScroll();
-                            setSelected(child.id);
-                          }}
-                        >
-                          枝 #{child.id}を開く
-                        </button>
-                      ))}
+                    {children.get(item.id)!.map((child) => (
+                      <button
+                        key={child.id}
+                        disabled={busy}
+                        aria-pressed={path[index + 1]?.id === child.id}
+                        onClick={() => {
+                          rememberScroll();
+                          setSelected(child.id);
+                        }}
+                      >
+                        枝 #{child.id}を開く
+                      </button>
+                    ))}
                   </nav>
                 )}
               </div>

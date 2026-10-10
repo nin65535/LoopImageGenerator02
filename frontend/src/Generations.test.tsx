@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -30,6 +31,59 @@ const generation = (
     position,
     url: `/images/${id}/${position}`,
   })),
+});
+
+it("recovers a running generation after reload without submitting again", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ "X-Generation-Running": "true" }),
+      json: async () => [],
+    })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ running: false }) })
+    .mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ "X-Generation-Running": "false" }),
+      json: async () => [generation(1, 1)],
+    });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Generations projectId={1} registered />);
+  await screen.findByRole("status");
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "参考画像から候補を生成",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  await screen.findByRole(
+    "region",
+    { name: "Generation #1の画像評価" },
+    { timeout: 2500 },
+  );
+  expect(fetchMock.mock.calls.every((call) => call[1]?.method !== "POST")).toBe(
+    true,
+  );
+});
+
+it("renders a long ancestor chain and retains access to every generation", async () => {
+  const chain = Array.from({ length: 500 }, (_, i) =>
+    generation(i + 1, 1, i || null),
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => chain }),
+  );
+  const { container } = render(<Generations projectId={1} />);
+  await waitFor(() =>
+    expect(container.querySelector('[data-generation="500"]')).toBeTruthy(),
+  );
+  expect(container.querySelectorAll("img")).toHaveLength(500);
+  fireEvent.change(screen.getByLabelText("表示するGeneration"), {
+    target: { value: "1" },
+  });
+  expect(container.querySelectorAll("img")).toHaveLength(1);
 });
 
 it("reopens only the active ancestors and switches sibling snapshots", async () => {

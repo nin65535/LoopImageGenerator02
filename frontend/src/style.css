@@ -138,6 +138,8 @@ select {
 }
 
 .generation-history > div {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 800px;
   border-top: 1px solid #536176;
   padding: 16px 0 24px;
   margin-top: 24px;

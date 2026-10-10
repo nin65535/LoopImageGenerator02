@@ -15,6 +15,7 @@ from backend.generation_flow import flow_router
 from backend.generation_views import generation_router
 from backend.lifecycle import ConnectionMonitor
 from backend.projects import project_router
+from backend.recovery import recover_storage, storage_lease
 from backend.reference_images import reference_router
 
 logger = logging.getLogger("uvicorn.error")
@@ -31,16 +32,19 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        database.initialize()
-        yield
+        with storage_lease(settings.storage_dir):
+            database.initialize()
+            recover_storage(database, settings.storage_dir)
+            yield
 
     app = FastAPI(title="LoopImageGenerator V2", lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
     app.include_router(project_router(database))
     app.include_router(reference_router(database, settings.storage_dir))
-    app.include_router(generation_router(database, settings.storage_dir))
-    app.include_router(flow_router(database, settings))
+    running: set[int] = set()
+    app.include_router(generation_router(database, settings.storage_dir, running))
+    app.include_router(flow_router(database, settings, running))
 
     @app.get("/api/events")
     async def events(request: Request) -> StreamingResponse:

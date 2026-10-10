@@ -11,7 +11,7 @@ from PIL import Image
 
 from backend.comfyui import ComfyUIClient, ComfyUIError, ComfyUITimeout
 from backend.config import Settings
-from backend.reference_images import validate_image
+from backend.reference_images import MAX_BYTES, validate_image
 
 
 @dataclass(frozen=True)
@@ -139,15 +139,22 @@ async def generate_images(
                 ):
                     raise ComfyUIError("Invalid generated image descriptor", prompt_id=prompt_id)
                 try:
-                    response = await client.client.get(
-                        client.url + "/view", params=descriptor, timeout=min(timeout, 30)
-                    )
-                    response.raise_for_status()
+                    async with client.client.stream(
+                        "GET", client.url + "/view", params=descriptor, timeout=min(timeout, 30)
+                    ) as response:
+                        response.raise_for_status()
+                        downloaded = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            if len(downloaded) + len(chunk) > MAX_BYTES:
+                                raise ComfyUIError(
+                                    "Generated image exceeds 20MiB", prompt_id=prompt_id
+                                )
+                            downloaded.extend(chunk)
                 except httpx.TimeoutException as exc:
                     raise ComfyUITimeout("Image download timed out", prompt_id=prompt_id) from exc
                 except httpx.HTTPError as exc:
                     raise ComfyUIError("Image download failed", prompt_id=prompt_id) from exc
-                data = response.content
+                data = bytes(downloaded)
                 try:
                     await asyncio.to_thread(validate_image, data)
                     with Image.open(io.BytesIO(data)) as image:
