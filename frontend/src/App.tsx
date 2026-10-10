@@ -167,6 +167,20 @@ export default function App() {
           <Generations
             key={`generations-${selected.id}`}
             projectId={selected.id}
+            registered={Boolean(selected.initial_image_path)}
+            onCompleted={() => {
+              const id = selected.id;
+              void request<Project>(`/api/projects/${id}`)
+                .then((project) => {
+                  setProjects((previous) =>
+                    previous.map((item) => (item.id === id ? project : item)),
+                  );
+                  setSelected((previous) =>
+                    previous?.id === id ? project : previous,
+                  );
+                })
+                .catch(() => setError("プロジェクト情報を更新できません。"));
+            }}
           />
         </section>
       )}

@@ -22,6 +22,60 @@ const generation = (id: number, count: number) => ({
   })),
 });
 
+it("submits a dislike snapshot once and appends the completed child", async () => {
+  let resolve: (value: unknown) => void = () => {};
+  const pending = new Promise((value) => {
+    resolve = value;
+  });
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => [generation(1, 2)] })
+    .mockReturnValueOnce(pending)
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => [generation(1, 2), generation(2, 2)],
+    });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Generations projectId={1} registered />);
+  fireEvent.click((await screen.findAllByRole("button", { name: "嫌い" }))[0]);
+  const button = screen.getByRole("button", {
+    name: "評価を確定して次世代を生成",
+  });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+    parent_id: 1,
+    selection: { liked: [], disliked: [100] },
+  });
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  resolve({ ok: true, json: async () => ({ id: 2 }) });
+  await screen.findByRole("region", { name: "Generation #2の画像評価" });
+  expect(screen.getAllByRole("img")).toHaveLength(4);
+});
+
+it("starts from the reference and retains ratings after a generation failure", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => [] })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1 }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => [generation(1, 1)] })
+    .mockResolvedValueOnce({ ok: false });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Generations projectId={1} registered />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "参考画像から候補を生成" }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "好き" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "評価を確定して次世代を生成" }),
+  );
+  await screen.findByRole("alert");
+  expect(
+    screen.getByRole("button", { name: "好き" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
 it("supports variable counts, exclusive ratings, toggling and dislikes alone without writes", async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
@@ -30,7 +84,9 @@ it("supports variable counts, exclusive ratings, toggling and dislikes alone wit
   vi.stubGlobal("fetch", fetchMock);
   render(<Generations projectId={1} />);
   await screen.findByAltText("候補画像 11");
-  fireEvent.click(screen.getByRole("button", { name: "評価を確認" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "評価を確定して次世代を生成" }),
+  );
   expect(screen.getByRole("alert").textContent).toContain("最低1枚");
   const card = within(screen.getByRole("article", { name: "画像 1" }));
   fireEvent.click(card.getByRole("button", { name: "好き" }));
@@ -41,10 +97,6 @@ it("supports variable counts, exclusive ratings, toggling and dislikes alone wit
   expect(
     card.getByRole("button", { name: "好き" }).getAttribute("aria-pressed"),
   ).toBe("false");
-  fireEvent.click(screen.getByRole("button", { name: "評価を確認" }));
-  expect(screen.getByRole("status").textContent).toContain(
-    "評価を確認しました",
-  );
   fireEvent.click(card.getByRole("button", { name: "嫌い" }));
   expect(
     card.getByRole("button", { name: "未評価" }).getAttribute("aria-pressed"),

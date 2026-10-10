@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config import Settings, load_settings
 from backend.database import Database
+from backend.generation_flow import flow_router
 from backend.generation_views import generation_router
 from backend.lifecycle import ConnectionMonitor
 from backend.projects import project_router
@@ -39,6 +40,7 @@ def create_app(
     app.include_router(project_router(database))
     app.include_router(reference_router(database, settings.storage_dir))
     app.include_router(generation_router(database, settings.storage_dir))
+    app.include_router(flow_router(database, settings))
 
     @app.get("/api/events")
     async def events(request: Request) -> StreamingResponse:

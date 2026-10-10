@@ -55,7 +55,7 @@ def main():
                 page.goto(url)
                 page.get_by_role("button", name="評価検証（#1）を開く").click()
                 expect(page.locator(".candidate")).to_have_count(11)
-                page.get_by_role("button", name="評価を確認", exact=True).click()
+                page.get_by_role("button", name="評価を確定して次世代を生成", exact=True).click()
                 expect(page.get_by_role("alert")).to_contain_text("最低1枚")
                 card = page.get_by_role("article", name="画像 1", exact=True)
                 card.get_by_role("button", name="好き", exact=True).click()
@@ -63,8 +63,6 @@ def main():
                 expect(card.get_by_role("button", name="好き", exact=True)).to_have_attribute(
                     "aria-pressed", "false"
                 )
-                page.get_by_role("button", name="評価を確認", exact=True).click()
-                expect(page.get_by_text("評価を確認しました。", exact=False)).to_be_visible()
                 card.get_by_role("button", name="嫌い", exact=True).click()
                 expect(card.get_by_role("button", name="未評価", exact=True)).to_have_attribute(
                     "aria-pressed", "true"
