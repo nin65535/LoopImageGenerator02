@@ -27,3 +27,58 @@ h1 {
 .note {
   color: #acb7c7;
 }
+section {
+  margin-top: 32px;
+}
+form {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+input,
+button {
+  font: inherit;
+  border-radius: 8px;
+  padding: 10px 16px;
+}
+input {
+  background: #222c3b;
+  color: inherit;
+  border: 1px solid #acb7c7;
+}
+button {
+  background: #9dccff;
+  color: #151a23;
+  border: 0;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button[aria-pressed="true"] {
+  outline: 3px solid #e5e9f0;
+}
+.projects {
+  padding: 0;
+  list-style: none;
+}
+.projects li {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.projects span {
+  color: #acb7c7;
+}
+.selected {
+  padding: 24px;
+  background: #222c3b;
+  border-radius: 12px;
+}
+[role="alert"] {
+  color: #ffb6b6;
+}

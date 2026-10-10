@@ -1,6 +1,6 @@
 # LoopImageGenerator V2 構成
 
-本書は配置と責務を定める。工程04までのAPI・UIの最小構成、起動制御とSQLite基盤を実装済み。
+本書は配置と責務を定める。工程05までのAPI・UI、起動制御、SQLite基盤とプロジェクト管理を実装済み。
 
 ## リポジトリ構成
 
@@ -30,3 +30,5 @@ DB接続ごとに外部キーを有効化する。画像枚数の一致など行
 一度に1工程の範囲を実装し、必要な検証を実行してから [ロードマップ](documents/ROADMAP.md) を更新する。設定・保存場所・配布方式など未確定の詳細を本書だけで確定しない。仕様判断は [企画書](documents/PROJECT_PLAN.md) に従う。
 
 `backend/config.py` はTOML設定の検証と保存パスの解決、`backend/database.py` はDDL初期化・接続・トランザクションを担当する。FastAPI lifespanで初期化し、設定とDBはapp.stateへ保持する。設定ファイルは `config.toml`、保存データの既定配置はGit対象外の `data/`。配布時はDDLと設定ファイルを含める。
+
+`backend/projects.py` はプロジェクト作成・一覧・詳細APIを提供する。SQLはパラメータで値を渡し、世代数は対象プロジェクトだけを集計する。参考画像未登録はDBで空文字、APIでnull。作成時にGenerationは保存しない。Reactは選択中のプロジェクトを一時状態として保持し、切替時に詳細を再取得する。応答が逆順になっても最後の選択を優先する。

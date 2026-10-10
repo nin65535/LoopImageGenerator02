@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.config import Settings, load_settings
 from backend.database import Database
 from backend.lifecycle import ConnectionMonitor
+from backend.projects import project_router
 
 logger = logging.getLogger("uvicorn.error")
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
@@ -33,6 +34,7 @@ def create_app(
     app = FastAPI(title="LoopImageGenerator V2", lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
+    app.include_router(project_router(database))
 
     @app.get("/api/events")
     async def events(request: Request) -> StreamingResponse:

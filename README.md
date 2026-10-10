@@ -4,8 +4,8 @@
 
 LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
 
-> **開発状況：工程04・設定ファイルとSQLite基盤（2026-10-10時点）**
-> API接続確認画面を実装済みです。画像生成・評価・保存は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
+> **開発状況：工程05・プロジェクトの新規作成・一覧・再開（2026-10-10時点）**
+> プロジェクトの作成・一覧・選択と、終了後の再開を実装済みです。参考画像の投入・画像生成・評価は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
 
 ## 使い方（予定）
 
@@ -81,8 +81,8 @@ APIの待受開始後、`http://127.0.0.1:8000` を専用Chromeで自動表示�
 
 ```powershell
 .venv/Scripts/python -m pytest
-.venv/Scripts/python -m ruff check backend tests scripts/check_browser.py scripts/check_lifecycle.py
-.venv/Scripts/python -m ruff format --check backend tests scripts/check_browser.py scripts/check_lifecycle.py
+.venv/Scripts/python -m ruff check backend tests scripts/check_browser.py scripts/check_lifecycle.py scripts/check_projects.py
+.venv/Scripts/python -m ruff format --check backend tests scripts/check_browser.py scripts/check_lifecycle.py scripts/check_projects.py
 npm --prefix frontend run format:check
 npm --prefix frontend run typecheck
 npm --prefix frontend test
@@ -91,7 +91,7 @@ python scripts/check_repository.py
 git diff --check
 ```
 
-APIテストは疎通・静的配信・未知パスの404を、UIテストはAPI接続の成功・失敗表示を検証します。資料検証スクリプトは構成とローカルMarkdownリンクを検証します。
+APIテストは疎通・静的配信・プロジェクト作成・入力検証・プロジェクト間の分離・再起動後の永続性を、UIテストはAPI接続・作成・切替・応答順序の逆転・作成失敗を検証します。資料検証スクリプトは構成とローカルMarkdownリンクを検証します。
 
 起動済みのAPI・UIとインストール済みChromeを使ったブラウザ検証：
 
@@ -111,6 +111,18 @@ APIテストは疎通・静的配信・未知パスの404を、UIテストはAPI
 ビルド済みUIとインストール済みChromeを使用し、連続再読み込み、複数タブ、最後のタブ終了、Chrome強制終了後のバックエンド停止をヘッドレスChromeで確認します。検証時のみ終了猶予を1.5秒に短縮します。
 
 ディレクトリの責務は [ARCHITECTURE.md](ARCHITECTURE.md)、仕様概要は [SPEC.md](SPEC.md) に記載しています。ユーザーにコードの手入力・書き換えを要求せず、セットアップと実装・検証はAIが担当します。
+
+## プロジェクトの作成と再開
+
+画面の「新規プロジェクト」で名前を入力し、「作成する」を押します。名前の前後の空白は除去し、1〜200文字を受け付けます。同名でもIDで区別します。「プロジェクトを選んで再開」から保存済みプロジェクトを開けます。アプリを終了してもSQLiteに保持され、次の起動で一覧から選択できます。選択中のプロジェクトは画面内の一時状態で、再読み込み後は選び直します。
+
+APIは `POST /api/projects`（JSON: `{"name":"名前"}`）、`GET /api/projects`、`GET /api/projects/{id}`。詳細には保存済み世代数と参考画像の登録状態を返し、存在しないIDは404、不正入力は422になります。参考画像未登録時はDBの `initial_image_path` を空文字、APIでは `null` として扱います。プロジェクト作成ではGenerationや画像行を作りません。参考画像の投入は工程06、世代表示・枝の再開は工程14で追加します。
+
+一時DBと1920pxの実Chrome（ヘッドレス）で、作成・切替・再読み込み・APIとChrome終了後の再開を検証できます。実データは変更しません。
+
+```powershell
+.venv/Scripts/python -m scripts.check_projects
+```
 
 ## 設定とSQLite初期化
 
