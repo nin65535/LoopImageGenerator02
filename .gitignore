@@ -1,4 +1,5 @@
 AGENTS.local.md
+*.code-workspace
 
 # Python development artifacts
 __pycache__/
