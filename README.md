@@ -4,7 +4,7 @@
 
 LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
 
-> **開発状況：工程03・Chrome自動起動・SSE生存監視・自動終了（2026-10-10時点）**
+> **開発状況：工程04・設定ファイルとSQLite基盤（2026-10-10時点）**
 > API接続確認画面を実装済みです。画像生成・評価・保存は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
 
 ## 使い方（予定）
@@ -75,7 +75,7 @@ npm --prefix frontend run build
 
 APIの待受開始後、`http://127.0.0.1:8000` を専用Chromeで自動表示します。起動ごとの一時プロファイルを使い、普段のChromeとは独立して動作します。全UI接続が切れてから10秒で終了し、初回接続が30秒以内に来ない場合も終了します。Chrome未導入・UI未ビルドは起動時にエラーを表示します。ポート変更は `--port 8001` で指定できます。Ctrl+Cでも停止できます。
 
-配信には `backend/` と `frontend/dist/`、Pythonの実行環境と `requirements.txt` の依存が必要です。実行ファイル化などの最終配布方式は保留です。開発用の `uvicorn backend.main:app --reload` はChrome自動起動・自動終了を行いません。
+配信には `backend/`、`sql/schema.sql`、`config.toml` と `frontend/dist/`、Pythonの実行環境と `requirements.txt` の依存が必要です。実行ファイル化などの最終配布方式は保留です。開発用の `uvicorn backend.main:app --reload` はChrome自動起動・自動終了を行いません。
 
 基本検証（リポジトリルート）：
 
@@ -111,6 +111,20 @@ APIテストは疎通・静的配信・未知パスの404を、UIテストはAPI
 ビルド済みUIとインストール済みChromeを使用し、連続再読み込み、複数タブ、最後のタブ終了、Chrome強制終了後のバックエンド停止をヘッドレスChromeで確認します。検証時のみ終了猶予を1.5秒に短縮します。
 
 ディレクトリの責務は [ARCHITECTURE.md](ARCHITECTURE.md)、仕様概要は [SPEC.md](SPEC.md) に記載しています。ユーザーにコードの手入力・書き換えを要求せず、セットアップと実装・検証はAIが担当します。
+
+## 設定とSQLite初期化
+
+ルートの `config.toml` でComfyUI URL、保存ディレクトリ、生成枚数、幅・高さ、SSE終了猶予・初回接続待ち時間（秒）を設定します。既定値はURL `http://127.0.0.1:8188`、保存先 `data/`、10枚、512×512、10秒・30秒です。設定変更の反映には再起動が必要です。枚数・寸法・待ち時間は正の整数、URLはHTTP(S)とし、不明なキーや不正値は起動時に拒否します。
+
+`LOOP_IMAGE_CONFIG` 環境変数で別のTOMLファイルを指定できます。相対保存先は設定ファイルの所在を基準に解決します。既定ファイルがない場合は組み込み初期値を使用し、明示指定したファイルがない場合はエラーにします。
+
+API起動時に保存先を作成し、`loop-image-generator.sqlite3` に `sql/schema.sql` の3テーブルを初期化します。再起動時は既存データを保持します。初期化だけ行う場合のAI実行手順：
+
+```powershell
+.venv/Scripts/python -c "from backend.config import load_settings; from backend.database import Database; Database(load_settings().database_path).initialize()"
+```
+
+`Database.connect()` は毎接続で外部キーを有効化して終了時に閉じ、`Database.transaction()` は成功時コミット・例外時ロールバックを行います。枚数と画像行数の一致、評価IDの整合性、完成Generationの保存とファイル管理は工程11で実装します。既存DBの制約変更を移行する仕組みは未実装です。
 
 ## 開発方針
 

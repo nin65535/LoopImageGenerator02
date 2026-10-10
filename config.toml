@@ -1,0 +1,8 @@
+# Relative storage paths are resolved from this file's directory.
+comfyui_url = "http://127.0.0.1:8188"
+storage_dir = "data"
+image_count = 10
+width = 512
+height = 512
+shutdown_grace = 10
+startup_timeout = 30

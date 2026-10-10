@@ -2,20 +2,37 @@
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.config import Settings, load_settings
+from backend.database import Database
 from backend.lifecycle import ConnectionMonitor
 
 logger = logging.getLogger("uvicorn.error")
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
 
-def create_app(dist: Path = DIST, monitor: ConnectionMonitor | None = None) -> FastAPI:
-    app = FastAPI(title="LoopImageGenerator V2")
+def create_app(
+    dist: Path = DIST,
+    monitor: ConnectionMonitor | None = None,
+    settings: Settings | None = None,
+) -> FastAPI:
+    settings = settings or load_settings()
+    database = Database(settings.database_path)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        database.initialize()
+        yield
+
+    app = FastAPI(title="LoopImageGenerator V2", lifespan=lifespan)
+    app.state.settings = settings
+    app.state.database = database
 
     @app.get("/api/events")
     async def events(request: Request) -> StreamingResponse:

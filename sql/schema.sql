@@ -36,14 +36,14 @@ CREATE TABLE IF NOT EXISTS generations (
         OR (parent_id IS NOT NULL AND selection_json IS NOT NULL)),
     CHECK (json_valid(parameters_json)),
     CHECK (json_type(parameters_json) = 'object'),
-    CHECK (json_type(parameters_json, '$.image_count') = 'integer'),
+    CHECK (json_type(parameters_json, '$.image_count') IS 'integer'),
     CHECK (json_extract(parameters_json, '$.image_count') >= 1),
     CHECK (
         selection_json IS NULL OR
         CASE WHEN json_valid(selection_json) THEN
             json_type(selection_json) = 'object'
-            AND json_type(selection_json, '$.liked') = 'array'
-            AND json_type(selection_json, '$.disliked') = 'array'
+            AND json_type(selection_json, '$.liked') IS 'array'
+            AND json_type(selection_json, '$.disliked') IS 'array'
             AND (json_array_length(selection_json, '$.liked')
                + json_array_length(selection_json, '$.disliked')) >= 1
         ELSE 0 END

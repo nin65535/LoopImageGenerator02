@@ -11,6 +11,7 @@ from pathlib import Path
 
 import uvicorn
 
+from backend.config import load_settings
 from backend.lifecycle import ConnectionMonitor
 from backend.main import DIST, create_app
 
@@ -34,10 +35,15 @@ class AppServer(uvicorn.Server):
         self.headless = headless
         self.browser: subprocess.Popen | None = None
         self.watcher: asyncio.Task | None = None
-        self.monitor = ConnectionMonitor(self.request_exit)
+        settings = load_settings()
+        self.monitor = ConnectionMonitor(
+            self.request_exit,
+            grace=settings.shutdown_grace,
+            startup_timeout=settings.startup_timeout,
+        )
         super().__init__(
             uvicorn.Config(
-                create_app(monitor=self.monitor),
+                create_app(monitor=self.monitor, settings=settings),
                 host="127.0.0.1",
                 port=port,
                 timeout_graceful_shutdown=3,
