@@ -13,6 +13,7 @@ from backend.config import Settings, load_settings
 from backend.database import Database
 from backend.lifecycle import ConnectionMonitor
 from backend.projects import project_router
+from backend.reference_images import reference_router
 
 logger = logging.getLogger("uvicorn.error")
 DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
@@ -35,6 +36,7 @@ def create_app(
     app.state.settings = settings
     app.state.database = database
     app.include_router(project_router(database))
+    app.include_router(reference_router(database, settings.storage_dir))
 
     @app.get("/api/events")
     async def events(request: Request) -> StreamingResponse:

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ReferenceImage from "./ReferenceImage";
 
 type Project = {
   id: number;
@@ -146,9 +147,22 @@ export default function App() {
               ? "参考画像は登録済みです。"
               : "参考画像はまだ登録されていません。"}
           </p>
-          <p className="note">
-            参考画像の投入は工程06、生成履歴の表示・枝の再開は工程14で追加します。
-          </p>
+          <ReferenceImage
+            key={selected.id}
+            projectId={selected.id}
+            registered={Boolean(selected.initial_image_path)}
+            onSaved={(value) => {
+              const project = value as Project;
+              setProjects((previous) =>
+                previous.map((item) =>
+                  item.id === project.id ? project : item,
+                ),
+              );
+              setSelected((previous) =>
+                previous?.id === project.id ? project : previous,
+              );
+            }}
+          />
         </section>
       )}
     </main>
