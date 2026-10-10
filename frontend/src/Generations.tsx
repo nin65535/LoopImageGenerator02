@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type Generation = {
   id: number;
+  parent_id: number | null;
+  selection: { liked: number[]; disliked: number[] } | null;
   parameters: { width?: number; height?: number };
   images: { id: number; position: number; url: string }[];
 };
@@ -10,16 +12,23 @@ type Rating = "liked" | "disliked";
 function Candidates({
   generation,
   busy,
+  snapshot,
   onGenerate,
 }: {
   generation: Generation;
+  snapshot?: Generation;
   busy: boolean;
   onGenerate: (
     parentId: number,
     selection: { liked: number[]; disliked: number[] },
   ) => void;
 }) {
-  const [ratings, setRatings] = useState<Record<number, Rating>>({});
+  const [ratings, setRatings] = useState<Record<number, Rating>>(() =>
+    Object.fromEntries([
+      ...(snapshot?.selection?.liked ?? []).map((id) => [id, "liked"]),
+      ...(snapshot?.selection?.disliked ?? []).map((id) => [id, "disliked"]),
+    ]),
+  );
   const [message, setMessage] = useState("");
   const liked = Object.values(ratings).filter(
     (value) => value === "liked",
@@ -40,6 +49,15 @@ function Candidates({
 
   return (
     <section aria-label={`Generation #${generation.id}の画像評価`}>
+      <h3>Generation #{generation.id}</h3>
+      <p className="note">
+        {generation.parent_id
+          ? `親 Generation #${generation.parent_id}`
+          : "参考画像から生成"}
+        {snapshot
+          ? ` · Generation #${snapshot.id}を生成した評価を表示（変更して新しい枝を作れます）`
+          : " · この世代から次の候補を生成できます"}
+      </p>
       <p>
         好き {liked}枚 · 嫌い {disliked}枚 · 未評価{" "}
         {generation.images.length - liked - disliked}枚
@@ -140,7 +158,48 @@ export default function Generations({
   const [error, setError] = useState("");
   const submitting = useRef(false);
   const alive = useRef(true);
-  const added = useRef<number[]>([]);
+  const history = useRef<HTMLDivElement>(null);
+  const scrollRestore = useRef<{
+    id?: string;
+    top: number;
+    y: number;
+    bottom: boolean;
+  } | null>(null);
+  function rememberScroll(follow = false) {
+    const cards = Array.from(
+      history.current?.querySelectorAll<HTMLElement>("[data-generation]") ?? [],
+    );
+    const anchor = cards.find(
+      (card) => card.getBoundingClientRect().bottom > 0,
+    );
+    scrollRestore.current = {
+      id: anchor?.dataset.generation,
+      top: anchor?.getBoundingClientRect().top ?? 0,
+      y: window.scrollY,
+      bottom:
+        follow &&
+        document.documentElement.scrollHeight -
+          window.innerHeight -
+          window.scrollY <
+          100,
+    };
+  }
+  useLayoutEffect(() => {
+    const saved = scrollRestore.current;
+    if (!saved) return;
+    scrollRestore.current = null;
+    const anchor = Array.from(
+      history.current?.querySelectorAll<HTMLElement>("[data-generation]") ?? [],
+    ).find((card) => card.dataset.generation === saved.id);
+    window.scrollTo(
+      0,
+      saved.bottom
+        ? document.documentElement.scrollHeight
+        : anchor
+          ? window.scrollY + anchor.getBoundingClientRect().top - saved.top
+          : saved.y,
+    );
+  }, [selected, generations]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -171,9 +230,7 @@ export default function Generations({
       if (!list.ok) throw new Error("Retrieval failed");
       const data = (await list.json()) as Generation[];
       if (!alive.current) return;
-      if (parentId && !added.current.includes(parentId))
-        added.current.push(parentId);
-      added.current.push(completed.id);
+      rememberScroll(true);
       setGenerations(data);
       setSelected(completed.id);
       onCompleted?.();
@@ -210,6 +267,15 @@ export default function Generations({
     return () => controller.abort();
   }, [projectId, retry]);
   const generation = generations.find((item) => item.id === selected);
+  const byId = new Map(generations.map((item) => [item.id, item]));
+  const path: Generation[] = [];
+  const visited = new Set<number>();
+  let cursor = generation;
+  while (cursor && !visited.has(cursor.id)) {
+    visited.add(cursor.id);
+    path.unshift(cursor);
+    cursor = cursor.parent_id ? byId.get(cursor.parent_id) : undefined;
+  }
   return (
     <section aria-labelledby="generations-title">
       <h2 id="generations-title">候補画像を評価</h2>
@@ -251,27 +317,54 @@ export default function Generations({
             disabled={busy}
             id="generation-choice"
             value={selected ?? ""}
-            onChange={(event) => setSelected(Number(event.target.value))}
+            onChange={(event) => {
+              rememberScroll();
+              setSelected(Number(event.target.value));
+            }}
           >
             {generations.map((item) => (
               <option key={item.id} value={item.id}>
-                Generation #{item.id}（{item.images.length}枚）
+                Generation #{item.id}（{item.images.length}枚・
+                {item.parent_id ? `親 #${item.parent_id}` : "最初の世代"}）
               </option>
             ))}
           </select>
-          {generations
-            .filter(
-              (item) =>
-                item.id === generation.id || added.current.includes(item.id),
-            )
-            .map((item) => (
-              <Candidates
-                key={item.id}
-                generation={item}
-                busy={busy}
-                onGenerate={(id, selection) => void generate(id, selection)}
-              />
+          <p className="note">
+            表示中の経路: {path.map((item) => `#${item.id}`).join(" → ")} ·
+            過去の世代で評価を確定すると新しい枝を作成します。
+          </p>
+          <div ref={history} className="generation-history">
+            {path.map((item, index) => (
+              <div key={item.id} data-generation={item.id}>
+                <Candidates
+                  key={`${item.id}-${path[index + 1]?.id ?? "leaf"}`}
+                  generation={item}
+                  snapshot={path[index + 1]}
+                  busy={busy}
+                  onGenerate={(id, selection) => void generate(id, selection)}
+                />
+                {generations.some((child) => child.parent_id === item.id) && (
+                  <nav aria-label={`Generation #${item.id}の子世代`}>
+                    {generations
+                      .filter((child) => child.parent_id === item.id)
+                      .map((child) => (
+                        <button
+                          key={child.id}
+                          disabled={busy}
+                          aria-pressed={path[index + 1]?.id === child.id}
+                          onClick={() => {
+                            rememberScroll();
+                            setSelected(child.id);
+                          }}
+                        >
+                          枝 #{child.id}を開く
+                        </button>
+                      ))}
+                  </nav>
+                )}
+              </div>
             ))}
+          </div>
         </>
       )}
     </section>

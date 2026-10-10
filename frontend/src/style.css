@@ -136,3 +136,16 @@ select {
   padding: 8px;
   border-radius: 8px;
 }
+
+.generation-history > div {
+  border-top: 1px solid #536176;
+  padding: 16px 0 24px;
+  margin-top: 24px;
+  overflow-anchor: none;
+}
+.generation-history nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}

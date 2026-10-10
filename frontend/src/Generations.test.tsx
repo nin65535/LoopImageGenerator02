@@ -5,21 +5,103 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Generations from "./Generations";
+
+beforeEach(() => {
+  vi.stubGlobal("scrollTo", vi.fn());
+});
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-const generation = (id: number, count: number) => ({
+const generation = (
+  id: number,
+  count: number,
+  parent: number | null = null,
+) => ({
   id,
+  parent_id: parent,
+  selection: parent ? { liked: [], disliked: [parent * 100] } : null,
   parameters: { width: 64, height: 96 },
   images: Array.from({ length: count }, (_, position) => ({
     id: id * 100 + position,
     position,
     url: `/images/${id}/${position}`,
   })),
+});
+
+it("reopens only the active ancestors and switches sibling snapshots", async () => {
+  const branch = [
+    generation(1, 1),
+    generation(2, 1, 1),
+    generation(3, 1, 2),
+    { ...generation(4, 1, 1), selection: { liked: [100], disliked: [] } },
+  ];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => branch }),
+  );
+  const view = render(<Generations projectId={1} />);
+  await screen.findByRole("region", { name: "Generation #4の画像評価" });
+  expect(
+    screen.queryByRole("region", { name: "Generation #2の画像評価" }),
+  ).toBeNull();
+  let root = within(
+    screen.getByRole("region", { name: "Generation #1の画像評価" }),
+  );
+  expect(
+    root.getByRole("button", { name: "好き" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "枝 #2を開く" }));
+  root = within(
+    screen.getByRole("region", { name: "Generation #1の画像評価" }),
+  );
+  expect(
+    root.getByRole("button", { name: "嫌い" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.change(screen.getByLabelText("表示するGeneration"), {
+    target: { value: "3" },
+  });
+  expect(screen.getAllByRole("img")).toHaveLength(3);
+  expect(screen.getByText(/表示中の経路: #1 → #2 → #3/)).toBeTruthy();
+  view.unmount();
+  render(<Generations projectId={1} />);
+  await screen.findByRole("region", { name: "Generation #4の画像評価" });
+  fireEvent.change(screen.getByLabelText("表示するGeneration"), {
+    target: { value: "3" },
+  });
+  expect(screen.getAllByRole("img")).toHaveLength(3);
+});
+
+it("creates a sibling from a past ancestor and hides the previous branch", async () => {
+  const original = [generation(1, 1), generation(2, 1, 1), generation(3, 1, 2)];
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => original })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 4 }) })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => [...original, generation(4, 1, 1)],
+    });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Generations projectId={1} />);
+  const root = within(
+    await screen.findByRole("region", { name: "Generation #1の画像評価" }),
+  );
+  fireEvent.click(
+    root.getByRole("button", { name: "評価を確定して次世代を生成" }),
+  );
+  await screen.findByRole("region", { name: "Generation #4の画像評価" });
+  expect(
+    screen.queryByRole("region", { name: "Generation #3の画像評価" }),
+  ).toBeNull();
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body).parent_id).toBe(1);
+  fireEvent.change(screen.getByLabelText("表示するGeneration"), {
+    target: { value: "3" },
+  });
+  expect(screen.getAllByRole("img")).toHaveLength(3);
 });
 
 it("submits a dislike snapshot once and appends the completed child", async () => {
@@ -33,7 +115,7 @@ it("submits a dislike snapshot once and appends the completed child", async () =
     .mockReturnValueOnce(pending)
     .mockResolvedValueOnce({
       ok: true,
-      json: async () => [generation(1, 2), generation(2, 2)],
+      json: async () => [generation(1, 2), generation(2, 2, 1)],
     });
   vi.stubGlobal("fetch", fetchMock);
   render(<Generations projectId={1} registered />);

@@ -43,6 +43,7 @@ def generation_router(database: Database, storage: Path) -> APIRouter:
             {
                 "id": row["id"],
                 "parent_id": row["parent_id"],
+                "selection": json.loads(row["selection_json"]) if row["selection_json"] else None,
                 "created_at": row["created_at"],
                 "parameters": json.loads(row["parameters_json"]),
                 "images": grouped.get(row["id"], []),
