@@ -1,6 +1,28 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
+
+const closeEvents = vi.fn();
+const eventSource = vi.fn(function () {
+  return { close: closeEvents };
+});
+
+beforeEach(() => {
+  closeEvents.mockClear();
+  eventSource.mockClear();
+  vi.stubGlobal("EventSource", eventSource);
+});
+
+it("opens the lifetime stream and closes it when unmounted", () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(() => new Promise(() => {})),
+  );
+  const view = render(<App />);
+  expect(eventSource).toHaveBeenCalledWith("/api/events");
+  view.unmount();
+  expect(closeEvents).toHaveBeenCalledOnce();
+});
 
 afterEach(() => {
   cleanup();

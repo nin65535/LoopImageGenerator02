@@ -4,6 +4,7 @@ export default function App() {
   const [status, setStatus] = useState("接続を確認しています…");
 
   useEffect(() => {
+    const events = new EventSource("/api/events");
     const controller = new AbortController();
     fetch("/api/health", { signal: controller.signal })
       .then(async (response) => {
@@ -25,7 +26,10 @@ export default function App() {
           setStatus("APIに接続できません。起動状態を確認してください。");
         }
       });
-    return () => controller.abort();
+    return () => {
+      events.close();
+      controller.abort();
+    };
   }, []);
 
   return (

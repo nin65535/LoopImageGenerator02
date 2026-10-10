@@ -4,7 +4,7 @@
 
 LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
 
-> **開発状況：工程02・FastAPI＋Reactの最小構成（2026-10-10時点）**
+> **開発状況：工程03・Chrome自動起動・SSE生存監視・自動終了（2026-10-10時点）**
 > API接続確認画面を実装済みです。画像生成・評価・保存は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
 
 ## 使い方（予定）
@@ -35,7 +35,7 @@ LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き�
 | データベース | SQLite | projects / generations / images |
 | 画像生成・タグ付け | ComfyUI API | Stable Diffusionによる生成、WD14Tagger等によるタグ付け |
 
-バックエンド起動時にChromeを自動表示し、SSE接続監視を使ってブラウザ終了後にバックエンドも停止する構成を予定しています。想定環境はデスクトップの1920px幅モニタとChromeフルスクリーンです。
+バックエンド起動時に専用Chromeウィンドウを自動表示し、SSE接続監視を使って最後のUI接続が切れてから10秒後にバックエンドも停止します。再読み込みや瞬断は猶予内の再接続で継続します。想定環境はデスクトップの1920px幅モニタです。
 
 ## データモデル
 
@@ -70,17 +70,19 @@ UIは `http://127.0.0.1:5173`。Viteが `/api` をローカルAPIへ転送する
 
 ```powershell
 npm --prefix frontend run build
-.venv/Scripts/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+.venv/Scripts/python -m backend.launcher
 ```
 
-`http://127.0.0.1:8000` をChromeで開くと、React画面とAPIを同じ接続先から利用できます。配信には `backend/` と `frontend/dist/`、Pythonの実行環境と `requirements.txt` の依存が必要です。実行ファイル化などの最終配布方式は保留です。Chrome自動起動・終了監視は工程03で実装します。
+APIの待受開始後、`http://127.0.0.1:8000` を専用Chromeで自動表示します。起動ごとの一時プロファイルを使い、普段のChromeとは独立して動作します。全UI接続が切れてから10秒で終了し、初回接続が30秒以内に来ない場合も終了します。Chrome未導入・UI未ビルドは起動時にエラーを表示します。ポート変更は `--port 8001` で指定できます。Ctrl+Cでも停止できます。
+
+配信には `backend/` と `frontend/dist/`、Pythonの実行環境と `requirements.txt` の依存が必要です。実行ファイル化などの最終配布方式は保留です。開発用の `uvicorn backend.main:app --reload` はChrome自動起動・自動終了を行いません。
 
 基本検証（リポジトリルート）：
 
 ```powershell
 .venv/Scripts/python -m pytest
-.venv/Scripts/python -m ruff check backend tests scripts/check_browser.py
-.venv/Scripts/python -m ruff format --check backend tests scripts/check_browser.py
+.venv/Scripts/python -m ruff check backend tests scripts/check_browser.py scripts/check_lifecycle.py
+.venv/Scripts/python -m ruff format --check backend tests scripts/check_browser.py scripts/check_lifecycle.py
 npm --prefix frontend run format:check
 npm --prefix frontend run typecheck
 npm --prefix frontend test
@@ -99,6 +101,14 @@ APIテストは疎通・静的配信・未知パスの404を、UIテストはAPI
 ```
 
 1つ目はビルド済みUI、2つ目は開発用UIのReact表示とAPI通信を1920pxのヘッドレスChromeで検証します。工程02の検証にComfyUIは不要です。
+
+工程03のChrome自動起動・SSE監視・終了の統合検証（事前のAPI起動は不要）：
+
+```powershell
+.venv/Scripts/python -m scripts.check_lifecycle
+```
+
+ビルド済みUIとインストール済みChromeを使用し、連続再読み込み、複数タブ、最後のタブ終了、Chrome強制終了後のバックエンド停止をヘッドレスChromeで確認します。検証時のみ終了猶予を1.5秒に短縮します。
 
 ディレクトリの責務は [ARCHITECTURE.md](ARCHITECTURE.md)、仕様概要は [SPEC.md](SPEC.md) に記載しています。ユーザーにコードの手入力・書き換えを要求せず、セットアップと実装・検証はAIが担当します。
 
