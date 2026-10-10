@@ -74,6 +74,7 @@ it("reports an unavailable API", async () => {
 
 it("creates a project, then opens another saved project", async () => {
   const fetchMock = vi.fn(async (url, options) => {
+    if (String(url).endsWith("/generations")) return response([]);
     if (url === "/api/health") return response({ status: "ok" });
     if (options?.method === "POST") return response(project(2, "海"));
     if (url === "/api/projects/1") return response(project(1, "山"));
@@ -101,6 +102,8 @@ it("keeps the newest project selection when responses arrive out of order", asyn
   vi.stubGlobal(
     "fetch",
     vi.fn((url) => {
+      if (String(url).endsWith("/generations"))
+        return Promise.resolve(response([]));
       if (url === "/api/health")
         return Promise.resolve(response({ status: "ok" }));
       if (url === "/api/projects")

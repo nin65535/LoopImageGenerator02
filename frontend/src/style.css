@@ -8,8 +8,8 @@ body {
   margin: 0;
 }
 main {
-  max-width: 1100px;
-  margin: 12vh auto;
+  max-width: 1800px;
+  margin: 32px auto;
   padding: 32px;
 }
 h1 {
@@ -92,4 +92,47 @@ button[aria-pressed="true"] {
   max-width: 100%;
   max-height: 480px;
   object-fit: contain;
+}
+
+.candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 20px;
+}
+.candidate {
+  min-width: 0;
+  padding: 12px;
+  border: 2px solid #536176;
+  border-radius: 12px;
+}
+.candidate[data-rating="liked"] {
+  border-color: #95e1b0;
+}
+.candidate[data-rating="disliked"] {
+  border-color: #ffb6b6;
+}
+.candidate img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  background: #151a23;
+}
+.rating-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rating-buttons button {
+  padding: 8px 12px;
+}
+button:focus-visible,
+select:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+}
+select {
+  font: inherit;
+  padding: 8px;
+  border-radius: 8px;
 }

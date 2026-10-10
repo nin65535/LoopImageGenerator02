@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import ReferenceImage from "./ReferenceImage";
+import Generations from "./Generations";
 
 type Project = {
   id: number;
@@ -162,6 +163,10 @@ export default function App() {
                 previous?.id === project.id ? project : previous,
               );
             }}
+          />
+          <Generations
+            key={`generations-${selected.id}`}
+            projectId={selected.id}
           />
         </section>
       )}
