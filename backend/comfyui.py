@@ -66,10 +66,10 @@ class ComfyUIClient:
         self.client = client
         self.url = url.rstrip("/")
 
-    async def _request(self, method, path, timeout, *, prompt_id=None, payload=None):
+    async def _request(self, method, path, timeout, *, prompt_id=None, payload=None, **kwargs):
         try:
             response = await self.client.request(
-                method, self.url + path, json=payload, timeout=timeout
+                method, self.url + path, json=payload, timeout=timeout, **kwargs
             )
         except httpx.TimeoutException as exc:
             raise ComfyUITimeout("ComfyUI request timed out", prompt_id=prompt_id) from exc

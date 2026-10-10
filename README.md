@@ -4,8 +4,8 @@
 
 LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
 
-> **開発状況：工程07・ComfyUI API接続・ワークフロー実行基盤（2026-10-10時点）**
-> プロジェクトの作成・一覧・再開、参考画像の投入・保存・表示、ComfyUIワークフロー実行基盤を実装済みです。画像生成・評価は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
+> **開発状況：工程08・ComfyUIによるタグ付け・結果直接取得（2026-10-10時点）**
+> プロジェクトの作成・一覧・再開、参考画像の投入・保存・表示、ComfyUIワークフロー実行基盤と画像タグ付け処理を実装済みです。画像生成・評価は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
 
 ## 使い方（予定）
 
@@ -179,3 +179,20 @@ AIによる実機検証手順（起動済みComfyUIをconfig.tomlのURLで使用
 任意のAPI形式ワークフローJSONも同じコマンドで実行できます。エディタ保存形式は拒否します。ComfyUIがサーバー側でノード・入力の妥当性を検証します。ワークフロー固有のモデルやカスタムノードは実行先に必要です。[公式APIサンプル](https://github.com/Comfy-Org/ComfyUI/blob/master/script_examples/basic_api_example.py)と[公式サーバー実装](https://github.com/Comfy-Org/ComfyUI/blob/master/server.py)を参照して実装しています。
 
 待機上限は投入を含め既定300秒、履歴確認間隔は0.5秒、各HTTP要求は最大30秒です。通信失敗時の自動再投入は行いません。タイムアウトや呼び出し側のキャンセルで待機を終えてもComfyUI側の実行は継続する可能性があります。投入応答を受け取れなかった場合はprompt_idが不明になるため、ComfyUI側のキューを確認してから再実行します。診断出力にはワークフロー由来の情報が含まれる場合があります。
+
+
+## ComfyUI画像タグ付け（工程08）
+
+`backend/tagging.py` の `tag_image(client, data)` は検証済みのPNG・JPEG・WebP画像を、ランダムな名前で `/upload/image` に送信し、LoadImage→WD14Taggerを実行します。`history.outputs["2"].tags` の1画像分の文字列を直接読み、空白・空要素・重複を取り除いて `{"solo": null, "red_hair": null}` 形式で返します。アンダースコアとタグ内のエスケープを保持します。確率は取得せずnullを使用し、TXTの保存・再取得は行いません。[WD14Taggerの実装](https://github.com/pythongosssss/ComfyUI-WD14-Tagger/blob/main/wd14tagger.py)のUI出力形式と、実機の履歴で確認しました。
+
+タグ出力の欠落・不正形式・複数画像分の出力はエラー、正常な空文字列は空JSON `{}` とします。生成・保存へ連結する工程で空タグ時の扱いを判断できます。エラーには取得済みprompt_idを保持します。DBやGenerationは変更せず、画面への自動連結は工程13で行います。
+
+AIによる実機検証手順（画像パスは検証対象に合わせて指定）：
+
+```powershell
+.venv/Scripts/python -m scripts.check_tagging path/to/reference.png --timeout 300
+```
+
+実行先に `WD14Tagger|pysssss` が必要です。既定モデルはノード標準の `wd-v1-4-moat-tagger-v2`、一般タグ閾値0.35・キャラクター閾値0.85です。CLIの `--model` でモデル、`--threshold` で一般タグ閾値を指定でき、Python関数ではキャラクター閾値も指定できます。モデル未導入の場合、WD14ノード自身がモデルをダウンロードする場合があります。モデル・ワークフローの恒久的な設定は未確定のままです。
+
+投入から完了までの待機上限は画像送信を含め既定300秒です。タイムアウト後もリモート実行が続く可能性があります。送信した入力画像はComfyUI側に残ります。共有ComfyUIの画像を誤削除しないよう、この工程では削除APIを実装していません。入力画像・履歴の清掃方針は工程15で扱います。
