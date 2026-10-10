@@ -1,6 +1,6 @@
 # LoopImageGenerator V2 構成
 
-本書は配置と責務を定める。工程05までのAPI・UI、起動制御、SQLite基盤とプロジェクト管理を実装済み。
+本書は配置と責務を定める。工程07までのAPI・UI、起動制御、SQLite基盤、参考画像管理とComfyUI実行基盤を実装済み。
 
 ## リポジトリ構成
 
@@ -32,3 +32,5 @@ DB接続ごとに外部キーを有効化する。画像枚数の一致など行
 `backend/config.py` はTOML設定の検証と保存パスの解決、`backend/database.py` はDDL初期化・接続・トランザクションを担当する。FastAPI lifespanで初期化し、設定とDBはapp.stateへ保持する。設定ファイルは `config.toml`、保存データの既定配置はGit対象外の `data/`。配布時はDDLと設定ファイルを含める。
 
 `backend/projects.py` はプロジェクト作成・一覧・詳細APIを提供する。SQLはパラメータで値を渡し、世代数は対象プロジェクトだけを集計する。参考画像未登録はDBで空文字、APIでnull。作成時にGenerationは保存しない。Reactは選択中のプロジェクトを一時状態として保持し、切替時に詳細を再取得する。応答が逆順になっても最後の選択を優先する。
+
+`backend/comfyui.py` はAPI形式ワークフローの読み込み・投入・履歴監視・例外分類を担当する。呼び出し側がhttpx.AsyncClientの寿命を管理し、非同期実行とキャンセルに対応する。DBへの書き込みは行わない。`scripts/check_comfyui.py` と `workflows/connection_check*.json` は実機の成功・失敗検証に用いる。タグ結果解釈、画像取得、生成条件変更と完成Generation保存は後続工程で追加する。

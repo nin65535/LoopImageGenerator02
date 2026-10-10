@@ -4,8 +4,8 @@
 
 LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
 
-> **開発状況：工程06・初期参考画像の投入・保存（2026-10-10時点）**
-> プロジェクトの作成・一覧・再開、参考画像の投入・保存・表示を実装済みです。画像生成・評価は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
+> **開発状況：工程07・ComfyUI API接続・ワークフロー実行基盤（2026-10-10時点）**
+> プロジェクトの作成・一覧・再開、参考画像の投入・保存・表示、ComfyUIワークフロー実行基盤を実装済みです。画像生成・評価は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
 
 ## 使い方（予定）
 
@@ -162,3 +162,20 @@ V1は手作業による開発でしたが、V2は**人間による手打ちコ�
 
 - 非対象：画像のアップスケール、仕上げ機能、ユーザーへのプロンプト手入力要求。
 - 将来課題：タグ推定確率の取得、評価反映アルゴリズムの精緻化。
+
+## ComfyUIワークフロー実行（工程07）
+
+`backend/comfyui.py` がAPI形式JSONの読み込み、`POST /prompt`、返却されたprompt_idの`GET /history/{prompt_id}`監視を担当します。成功は履歴のcompleted=trueとstatus_str=successで判定し、outputsと履歴全体を返します。HTTPエラー・接続失敗・不正JSON・実行エラー・中断は例外として診断情報と取得済みprompt_idを保持します。タグ解析と生成UIへの接続は後続工程です。
+
+AIによる実機検証手順（起動済みComfyUIをconfig.tomlのURLで使用）：
+
+```powershell
+.venv/Scripts/python -m scripts.check_comfyui workflows/connection_check.json --timeout 30
+.venv/Scripts/python -m scripts.check_comfyui workflows/connection_check_invalid.json --timeout 30
+```
+
+1つ目はモデル不要のEmptyImage→PreviewImageで64×64画像をComfyUIの一時領域に出力し、成功時は終了コード0とprompt_id・outputsを表示します。2つ目は意図的な存在しないノードで失敗し、終了コード1と診断JSONを表示するのが期待結果です。DBや既存プロジェクトは変更しません。
+
+任意のAPI形式ワークフローJSONも同じコマンドで実行できます。エディタ保存形式は拒否します。ComfyUIがサーバー側でノード・入力の妥当性を検証します。ワークフロー固有のモデルやカスタムノードは実行先に必要です。[公式APIサンプル](https://github.com/Comfy-Org/ComfyUI/blob/master/script_examples/basic_api_example.py)と[公式サーバー実装](https://github.com/Comfy-Org/ComfyUI/blob/master/server.py)を参照して実装しています。
+
+待機上限は投入を含め既定300秒、履歴確認間隔は0.5秒、各HTTP要求は最大30秒です。通信失敗時の自動再投入は行いません。タイムアウトや呼び出し側のキャンセルで待機を終えてもComfyUI側の実行は継続する可能性があります。投入応答を受け取れなかった場合はprompt_idが不明になるため、ComfyUI側のキューを確認してから再実行します。診断出力にはワークフロー由来の情報が含まれる場合があります。
