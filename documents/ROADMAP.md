@@ -1,7 +1,7 @@
 # LoopImageGenerator V2 実装ロードマップ
 
 - [x] 01. リポジトリ初期化・AI開発ルール整備
-- [ ] 02. FastAPI＋Reactの最小構成
+- [x] 02. FastAPI＋Reactの最小構成
 - [ ] 03. Chrome自動起動・SSE生存監視・自動終了
 - [ ] 04. 設定ファイルとSQLite基盤
 - [ ] 05. プロジェクトの新規作成・一覧・再開

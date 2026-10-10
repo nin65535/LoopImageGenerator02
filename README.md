@@ -4,8 +4,8 @@
 
 LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
 
-> **開発状況：工程01・リポジトリ基盤整備（2026-10-10時点）**
-> アプリ本体は未実装です。以下の機能は予定仕様です。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
+> **開発状況：工程02・FastAPI＋Reactの最小構成（2026-10-10時点）**
+> API接続確認画面を実装済みです。画像生成・評価・保存は今後の工程で追加します。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
 
 ## 使い方（予定）
 
@@ -47,16 +47,58 @@ LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き�
 
 ## 開発・起動方法
 
-工程01の資料・構成検証にはPython 3.12を使用します。追加パッケージは不要です。リポジトリルートから以下を実行できます。
+Python 3.12以上、Node.js 22.12以上（検証環境：Python 3.12.4 / Node.js 26.9.0）、npmを使用します。以下はAIが行うセットアップ・起動・検証の再現手順です。コードの手入力・修正は不要です。
+
+リポジトリルートで依存関係を導入します。
 
 ```powershell
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements-dev.txt
+npm --prefix frontend ci
+```
+
+開発時は2つのターミナルで、それぞれAPIとUIを起動します。
+
+```powershell
+.venv/Scripts/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+npm --prefix frontend run dev
+```
+
+UIは `http://127.0.0.1:5173`。Viteが `/api` をローカルAPIへ転送するため、画面は相対URLで通信します。APIの疎通確認は `http://127.0.0.1:8000/api/health`。アクセスログと疎通ログはAPIのコンソール、接続失敗の詳細はブラウザのコンソールへ出力します。
+
+配布用UIは次の手順でビルドし、FastAPIから配信します。開発用APIを停止してから起動してください。
+
+```powershell
+npm --prefix frontend run build
+.venv/Scripts/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+`http://127.0.0.1:8000` をChromeで開くと、React画面とAPIを同じ接続先から利用できます。配信には `backend/` と `frontend/dist/`、Pythonの実行環境と `requirements.txt` の依存が必要です。実行ファイル化などの最終配布方式は保留です。Chrome自動起動・終了監視は工程03で実装します。
+
+基本検証（リポジトリルート）：
+
+```powershell
+.venv/Scripts/python -m pytest
+.venv/Scripts/python -m ruff check backend tests scripts/check_browser.py
+.venv/Scripts/python -m ruff format --check backend tests scripts/check_browser.py
+npm --prefix frontend run format:check
+npm --prefix frontend run typecheck
+npm --prefix frontend test
+npm --prefix frontend run build
 python scripts/check_repository.py
 git diff --check
 ```
 
-最初のコマンドは必要ファイル・ディレクトリとローカルMarkdownリンクを検証し、問題があれば終了コード1を返します。2つ目は差分の空白エラーを検証します。
+APIテストは疎通・静的配信・未知パスの404を、UIテストはAPI接続の成功・失敗表示を検証します。資料検証スクリプトは構成とローカルMarkdownリンクを検証します。
 
-APIの起動、UIの開発サーバー、ビルド、ユニット・APIテストのコマンドは工程02で実装とともに追加します。現時点ではアプリを起動できません。画像生成の実機検証にはComfyUIが必要ですが、上記の資料検証には不要です。
+起動済みのAPI・UIとインストール済みChromeを使ったブラウザ検証：
+
+```powershell
+.venv/Scripts/python scripts/check_browser.py
+.venv/Scripts/python scripts/check_browser.py --url http://127.0.0.1:5173
+```
+
+1つ目はビルド済みUI、2つ目は開発用UIのReact表示とAPI通信を1920pxのヘッドレスChromeで検証します。工程02の検証にComfyUIは不要です。
 
 ディレクトリの責務は [ARCHITECTURE.md](ARCHITECTURE.md)、仕様概要は [SPEC.md](SPEC.md) に記載しています。ユーザーにコードの手入力・書き換えを要求せず、セットアップと実装・検証はAIが担当します。
 

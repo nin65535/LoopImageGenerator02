@@ -1,0 +1,29 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #e5e9f0;
+  background: #151a23;
+  line-height: 1.6;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 1100px;
+  margin: 12vh auto;
+  padding: 32px;
+}
+h1 {
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  margin: 12px 0;
+}
+.eyebrow {
+  color: #9dccff;
+}
+[role="status"] {
+  padding: 20px;
+  background: #222c3b;
+  border-radius: 12px;
+}
+.note {
+  color: #acb7c7;
+}
