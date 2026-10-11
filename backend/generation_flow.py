@@ -8,6 +8,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
+from backend.app_options import installed_models
 from backend.comfyui import ComfyUIClient, ComfyUIError, ComfyUITimeout
 from backend.config import Settings
 from backend.database import Database
@@ -86,6 +87,20 @@ def flow_router(
             raise HTTPException(409, "Generation already running")
         running.add(project_id)
         try:
+            project_config = (
+                json.loads(project["generation_config_json"])
+                if project["generation_config_json"]
+                else None
+            )
+            effective_settings = settings
+            if project_config:
+                if body.checkpoint and body.checkpoint != project_config["checkpoint"]:
+                    raise HTTPException(422, "プロジェクト作成時のモデルを使用してください。")
+                if project_config["checkpoint"] not in await installed_models(settings):
+                    raise HTTPException(409, "プロジェクトのモデルがComfyUIに存在しません。")
+                effective_settings = settings.model_copy(
+                    update={"width": project_config["width"], "height": project_config["height"]}
+                )
             async with httpx.AsyncClient(trust_env=False) as http:
                 client = ComfyUIClient(http, settings.comfyui_url)
                 if parent is None:
@@ -105,7 +120,11 @@ def flow_router(
                         disliked=[tags[item] for item in body.selection["disliked"]],
                     )
                     weights = feedback.weights
-                checkpoint = body.checkpoint or (parent or {}).get("checkpoint")
+                checkpoint = (
+                    (project_config or {}).get("checkpoint")
+                    or body.checkpoint
+                    or (parent or {}).get("checkpoint")
+                )
                 if not checkpoint:
                     info = await client._request("GET", "/object_info/CheckpointLoaderSimple", 30)
                     try:
@@ -121,7 +140,7 @@ def flow_router(
                 }
                 result = await generate_images(
                     client,
-                    settings,
+                    effective_settings,
                     checkpoint=checkpoint,
                     positive=prompt(weights, True),
                     negative=prompt(weights, False),

@@ -4,5 +4,5 @@ storage_dir = "data"
 image_count = 10
 width = 512
 height = 512
-shutdown_grace = 10
+shutdown_grace = 5
 startup_timeout = 30

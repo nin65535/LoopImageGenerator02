@@ -1,16 +1,30 @@
 import { useEffect, useRef, useState } from "react";
-import ReferenceImage from "./ReferenceImage";
-import Generations from "./Generations";
+import HomePage from "./HomePage";
+import ProjectPage from "./ProjectPage";
+import SettingsPage from "./SettingsPage";
+import CreateProjectPage from "./CreateProjectPage";
+import type { ProjectConfig } from "./appOptions";
 
-type Project = {
+export type Project = {
   id: number;
   name: string;
   initial_image_path: string | null;
   created_at: string;
   updated_at: string;
   generation_count: number;
+  generation_config?: ProjectConfig | null;
 };
-
+type Route =
+  | { page: "home" | "settings" | "create" }
+  | { page: "project"; id: number };
+function readRoute(): Route {
+  if (window.location.hash === "#/projects/new") return { page: "create" };
+  if (window.location.hash === "#/settings") return { page: "settings" };
+  const match = /^#\/projects\/([1-9]\d*)$/.exec(window.location.hash);
+  if (match && Number.isSafeInteger(Number(match[1])))
+    return { page: "project", id: Number(match[1]) };
+  return { page: "home" };
+}
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -18,21 +32,55 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export default function App() {
+  const [route, setRoute] = useState<Route>(readRoute);
   const [status, setStatus] = useState("接続を確認しています…");
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
-  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [breadcrumbHost, setBreadcrumbHost] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const mutating = useRef(false);
   const selectionRequest = useRef(0);
+
+  function navigate(hash: string) {
+    window.history.pushState(null, "", hash);
+    setRoute(readRoute());
+    setSelected(null);
+    setError("");
+  }
+  useEffect(() => {
+    const sync = () => {
+      setRoute(readRoute());
+      setSelected(null);
+      setError("");
+    };
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+    };
+  }, []);
 
   useEffect(() => {
     const events = new EventSource("/api/events");
     const controller = new AbortController();
+    let streamFailed = false;
+    events.onopen = () => {
+      streamFailed = false;
+      setStatus("APIに接続しました");
+    };
+    events.onerror = () => {
+      streamFailed = true;
+      setStatus("APIとの接続が切れました。再接続を試みています。");
+    };
     request<{ status: string }>("/api/health", { signal: controller.signal })
       .then((data) => {
         if (data.status !== "ok") throw new Error("Unexpected health response");
-        setStatus("APIに接続しました");
+        if (!controller.signal.aborted && !streamFailed)
+          setStatus("APIに接続しました");
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -40,150 +88,207 @@ export default function App() {
           setStatus("APIに接続できません。起動状態を確認してください。");
         }
       });
-    request<Project[]>("/api/projects", { signal: controller.signal })
-      .then(setProjects)
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setError("プロジェクト一覧を取得できません。");
-      });
     return () => {
+      events.onopen = null;
+      events.onerror = null;
       events.close();
       controller.abort();
     };
   }, []);
 
-  async function createProject(event: React.FormEvent) {
-    event.preventDefault();
-    if (busy || !name.trim()) return;
+  useEffect(() => {
+    const controller = new AbortController();
+    const version = ++selectionRequest.current;
+    if (route.page === "home") {
+      request<Project[]>("/api/projects", { signal: controller.signal })
+        .then((data) => {
+          if (!controller.signal.aborted) setProjects(data);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted)
+            setError("プロジェクト一覧を取得できません。");
+        });
+    } else if (route.page === "project") {
+      request<Project>(`/api/projects/${route.id}`, {
+        signal: controller.signal,
+      })
+        .then((project) => {
+          if (
+            version === selectionRequest.current &&
+            !controller.signal.aborted
+          )
+            setSelected(project);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted)
+            setError("プロジェクトを開けません。一覧から選び直してください。");
+        });
+    }
+    return () => controller.abort();
+  }, [route]);
+
+  async function createProject(name: string, config: ProjectConfig) {
+    if (mutating.current) return;
+    mutating.current = true;
     setBusy(true);
     setError("");
-    const version = ++selectionRequest.current;
+    const version = selectionRequest.current;
     try {
       const project = await request<Project>("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name, generation_config: config }),
       });
       setProjects((previous) => [project, ...previous]);
-      setName("");
-      if (version === selectionRequest.current) setSelected(project);
+      if (version === selectionRequest.current)
+        navigate(`#/projects/${project.id}`);
     } catch {
       setError(
         "プロジェクトを作成できません。接続を確認して再試行してください。",
       );
     } finally {
+      mutating.current = false;
       setBusy(false);
     }
   }
 
-  async function openProject(id: number) {
-    const version = ++selectionRequest.current;
-    setSelected(null);
+  async function deleteProject(project: Project) {
+    if (
+      mutating.current ||
+      !window.confirm(
+        `「${project.name}」とすべての世代・画像を削除しますか？この操作は取り消せません。`,
+      )
+    )
+      return;
+    mutating.current = true;
+    setBusy(true);
     setError("");
     try {
-      const project = await request<Project>(`/api/projects/${id}`);
-      if (version === selectionRequest.current) setSelected(project);
+      const response = await fetch(`/api/projects/${project.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setProjects((previous) =>
+        previous.filter((item) => item.id !== project.id),
+      );
     } catch {
-      if (version === selectionRequest.current)
-        setError("プロジェクトを開けません。一覧から選び直してください。");
+      setError(
+        "プロジェクトを削除できません。生成中の場合は完了後に再試行してください。",
+      );
+    } finally {
+      mutating.current = false;
+      setBusy(false);
     }
+  }
+
+  function updateProject(project: Project) {
+    setProjects((previous) =>
+      previous.map((item) => (item.id === project.id ? project : item)),
+    );
+    setSelected((previous) =>
+      previous?.id === project.id ? project : previous,
+    );
   }
 
   return (
     <main>
-      <p className="eyebrow">画像を選ぶだけで、次の画像が生まれる。</p>
-      <h1>LoopImageGenerator V2</h1>
-      <p>参考画像から、好き・嫌いを選んで画像を探索するローカルアプリ。</p>
-      <p role="status">{status}</p>
-      <section aria-labelledby="create-title">
-        <h2 id="create-title">新規プロジェクト</h2>
-        <form onSubmit={createProject}>
-          <label htmlFor="project-name">プロジェクト名</label>
-          <input
-            id="project-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            maxLength={200}
-            required
-            disabled={busy}
-          />
-          <button type="submit" disabled={busy || !name.trim()}>
-            {busy ? "作成中…" : "作成する"}
-          </button>
-        </form>
-      </section>
-      {error && <p role="alert">{error}</p>}
-      <section aria-labelledby="list-title">
-        <h2 id="list-title">プロジェクトを選んで再開</h2>
-        {projects.length === 0 ? (
-          <p className="note">プロジェクトはまだありません。</p>
-        ) : (
-          <ul className="projects">
-            {projects.map((project) => (
-              <li key={project.id}>
-                <button
-                  onClick={() => void openProject(project.id)}
-                  aria-pressed={selected?.id === project.id}
-                >
-                  {project.name}（#{project.id}）を開く
-                </button>
-                <span>
-                  {project.generation_count}世代 · 更新{" "}
-                  {new Date(project.updated_at).toLocaleString("ja-JP")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      {selected && (
-        <section aria-labelledby="selected-title" className="selected">
-          <h2 id="selected-title">{selected.name}</h2>
-          <p>
-            プロジェクト #{selected.id} · 保存済み {selected.generation_count}
-            世代
-          </p>
-          <p>
-            {selected.initial_image_path
-              ? "参考画像は登録済みです。"
-              : "参考画像はまだ登録されていません。"}
-          </p>
-          <ReferenceImage
-            key={selected.id}
-            projectId={selected.id}
-            registered={Boolean(selected.initial_image_path)}
-            onSaved={(value) => {
-              const project = value as Project;
-              setProjects((previous) =>
-                previous.map((item) =>
-                  item.id === project.id ? project : item,
-                ),
-              );
-              setSelected((previous) =>
-                previous?.id === project.id ? project : previous,
-              );
+      <header className="app-header">
+        <h1>
+          <a
+            href="#/"
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("#/");
             }}
-          />
-          <Generations
-            key={`generations-${selected.id}`}
-            projectId={selected.id}
-            registered={Boolean(selected.initial_image_path)}
+          >
+            LoopImageGenerator V2
+          </a>
+        </h1>
+        <div className="header-actions">
+          <div
+            className="api-indicator-wrapper"
+            tabIndex={0}
+            aria-describedby="api-details"
+          >
+            <span
+              role="status"
+              className="api-indicator"
+              data-state={
+                status === "APIに接続しました"
+                  ? "connected"
+                  : status === "接続を確認しています…"
+                    ? "checking"
+                    : "disconnected"
+              }
+              aria-label={status}
+            >
+              <span aria-hidden="true">API:</span>
+              <span className="api-dot" aria-hidden="true" />
+            </span>
+            <span id="api-details" className="api-tooltip" role="tooltip">
+              {status}
+            </span>
+          </div>
+          <a
+            href="#/settings"
+            className="settings-link"
+            aria-label="設定"
+            title="設定"
+            aria-current={route.page === "settings" ? "page" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate("#/settings");
+            }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
+              <path
+                d="M9 3h6l.6 3 2.4 1.4 2.9-.9 3 5.2-2.3 2.1v2.8l2.3 2.1-3 5.2-2.9-.9-2.4 1.4-.6 3H9l-.6-3L6 21l-2.9.9-3-5.2 2.3-2.1v-2.8L.1 9.7l3-5.2 2.9.9L8.4 4z"
+                transform="translate(2 1) scale(.8)"
+              />
+              <circle cx="12" cy="12" r="3.5" />
+            </svg>
+          </a>
+        </div>
+        <div className="header-breadcrumbs" ref={setBreadcrumbHost} />
+      </header>
+      {error && <p role="alert">{error}</p>}
+      {route.page === "home" && (
+        <HomePage
+          projects={projects}
+          busy={busy}
+          onNew={() => navigate("#/projects/new")}
+          onOpen={(id) => navigate(`#/projects/${id}`)}
+          onDelete={(project) => void deleteProject(project)}
+        />
+      )}
+      {route.page === "create" && (
+        <CreateProjectPage busy={busy} onCreate={createProject} />
+      )}
+      {route.page === "settings" && <SettingsPage />}
+      {route.page === "project" &&
+        (selected ? (
+          <ProjectPage
+            key={selected.id}
+            project={selected}
+            breadcrumbHost={breadcrumbHost}
+            onSaved={updateProject}
             onCompleted={() => {
-              const id = selected.id;
-              void request<Project>(`/api/projects/${id}`)
-                .then((project) => {
-                  setProjects((previous) =>
-                    previous.map((item) => (item.id === id ? project : item)),
-                  );
-                  setSelected((previous) =>
-                    previous?.id === id ? project : previous,
-                  );
-                })
+              void request<Project>(`/api/projects/${selected.id}`)
+                .then(updateProject)
                 .catch(() => setError("プロジェクト情報を更新できません。"));
             }}
           />
-        </section>
-      )}
+        ) : (
+          !error && <p>プロジェクトを読み込んでいます…</p>
+        ))}
     </main>
   );
 }

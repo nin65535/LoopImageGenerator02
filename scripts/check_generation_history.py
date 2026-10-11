@@ -122,12 +122,16 @@ def main():
                     page.get_by_role("button", name="履歴検証（#1）を開く").click()
                     expect(page.locator(".candidate")).to_have_count(6)
                     expect(
-                        page.get_by_text("表示中の経路: #1 → #4 → #5", exact=False)
-                    ).to_be_visible()
+                        page.get_by_role("navigation", name="Generationの祖先経路").get_by_role(
+                            "listitem"
+                        )
+                    ).to_have_text(["Generation #1", "›Generation #4", "›Generation #5"])
                     page.get_by_label("表示するGeneration").select_option("3")
                     expect(
-                        page.get_by_text("表示中の経路: #1 → #2 → #3", exact=False)
-                    ).to_be_visible()
+                        page.get_by_role("navigation", name="Generationの祖先経路").get_by_role(
+                            "listitem"
+                        )
+                    ).to_have_text(["Generation #1", "›Generation #2", "›Generation #3"])
                     page.get_by_label("表示するGeneration").select_option("5")
                     assert page.request.get(url + "/api/projects/1/generations").json() == saved
                     assert not errors, errors

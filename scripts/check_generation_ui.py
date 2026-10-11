@@ -55,6 +55,18 @@ def main():
                 page.goto(url)
                 page.get_by_role("button", name="評価検証（#1）を開く").click()
                 expect(page.locator(".candidate")).to_have_count(11)
+                page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+                page.wait_for_function(
+                    "Math.abs(document.querySelector('.app-header')"
+                    ".getBoundingClientRect().top) < 1"
+                )
+                header = page.locator(".app-header")
+                expect(
+                    header.get_by_role("navigation", name="Generationの祖先経路")
+                ).to_be_visible()
+                expect(page.locator(".selected .generation-breadcrumbs")).to_have_count(0)
+                expect(header.get_by_role("link", name="LoopImageGenerator V2")).to_be_visible()
+                expect(header.get_by_role("link", name="設定")).to_be_visible()
                 page.get_by_role("button", name="評価を確定して次世代を生成", exact=True).click()
                 expect(page.get_by_role("alert")).to_contain_text("最低1枚")
                 card = page.get_by_role("article", name="画像 1", exact=True)
@@ -85,7 +97,6 @@ def main():
                         )
                 card.get_by_role("button", name="好き", exact=True).click()
                 page.reload()
-                page.get_by_role("button", name="評価検証（#1）を開く").click()
                 expect(page.locator('.candidate[data-rating="unrated"]')).to_have_count(11)
                 assert snapshot(database) == before
                 assert not errors, errors

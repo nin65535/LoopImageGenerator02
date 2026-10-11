@@ -25,6 +25,7 @@ def main():
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.goto(url)
+                page.get_by_role("link", name="新規プロジェクト", exact=True).click()
                 page.get_by_label("プロジェクト名").fill("連続生成検証")
                 page.get_by_role("button", name="作成する", exact=True).click()
                 expect(page.get_by_role("heading", name="連続生成検証", exact=True)).to_be_visible()
@@ -34,7 +35,7 @@ def main():
                     headers={"Content-Type": "image/png"},
                 )
                 assert response.ok, response.text()
-                page.get_by_role("button", name="連続生成検証（#1）を開く").click()
+                page.reload()
                 page.get_by_role("button", name="参考画像から候補を生成").click()
                 expect(page.locator(".candidate")).to_have_count(2, timeout=300_000)
                 first = page.request.get(url + "/api/projects/1/generations").json()[0]

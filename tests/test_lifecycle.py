@@ -24,7 +24,7 @@ def test_reload_multiple_tabs_and_disconnect_grace():
     now[0] = 100
     monitor.check()
     monitor.disconnect()
-    now[0] = 109
+    now[0] = 104.9
     monitor.check()
     monitor.connect()  # Reload reconnects inside the grace period.
     monitor.connect()  # Another tab keeps the backend alive.
@@ -33,9 +33,9 @@ def test_reload_multiple_tabs_and_disconnect_grace():
     monitor.check()
     stop.assert_not_called()
     monitor.disconnect()
-    now[0] = 209
+    now[0] = 204.9
     monitor.check()
     stop.assert_not_called()
-    now[0] = 210
+    now[0] = 205
     monitor.check()
     stop.assert_called_once()

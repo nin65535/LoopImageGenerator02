@@ -28,7 +28,7 @@ def flow(tmp_path, monkeypatch):
         return TaggingResult("tag", {"sky": None, "tree": None})
 
     async def generating(client, settings, **kwargs):
-        calls.append(kwargs)
+        calls.append({**kwargs, "width": settings.width, "height": settings.height})
         seeds = [len(calls) * 10 + i for i in range(2)]
         return GenerationResult(
             {**kwargs, "image_count": 2, "width": 64, "height": 96, "seeds": seeds},
@@ -141,3 +141,32 @@ def test_reload_and_concurrent_submission_observe_one_running_generation(flow, m
         assert future.result().status_code == 201
     assert len(client.get(url).json()) == 1
     assert client.get(url).headers["X-Generation-Running"] == "false"
+
+
+def test_configured_project_uses_saved_model_and_size_for_root_and_child(flow, monkeypatch):
+    client, database, project, calls = flow
+    config = {"checkpoint": "chosen-model", "width": 768, "height": 1344}
+    with database.transaction() as connection:
+        connection.execute(
+            "UPDATE projects SET generation_config_json = ? WHERE id = ?",
+            (json.dumps(config), project),
+        )
+
+    async def models(*args):
+        return ["chosen-model"]
+
+    monkeypatch.setattr("backend.generation_flow.installed_models", models)
+    url = f"/api/projects/{project}/generations"
+    assert client.post(url, json={"checkpoint": "another-model"}).status_code == 422
+    assert not calls
+    root = client.post(url, json={})
+    assert root.status_code == 201, root.text
+    image = client.get(url).json()[0]["images"][0]["id"]
+    child = client.post(
+        url, json={"parent_id": root.json()["id"], "selection": {"liked": [image], "disliked": []}}
+    )
+    assert child.status_code == 201, child.text
+    assert all(
+        (call["checkpoint"], call["width"], call["height"]) == ("chosen-model", 768, 1344)
+        for call in calls
+    )

@@ -28,7 +28,7 @@ def verify(crash: bool) -> None:
         port = sock.getsockname()[1]
     with tempfile.TemporaryDirectory(prefix="loop-lifecycle-check-") as profile:
         server = AppServer(port, find_chrome(), profile, headless=True)
-        server.monitor.grace = 1.5
+        assert server.monitor.grace == 5
         thread = threading.Thread(target=server.run, daemon=True)
         thread.start()
         try:
@@ -50,20 +50,18 @@ def verify(crash: bool) -> None:
                 browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{debug_port[0]}")
                 context = browser.contexts[0]
                 page = context.pages[0]
-                expect(page.get_by_role("status")).to_have_text("APIに接続しました")
+                expect(page.get_by_role("status")).to_have_attribute("data-state", "connected")
                 wait_for(lambda: server.monitor.connections == 1)
                 if not crash:
-                    server.monitor.grace = 10
                     page.goto("about:blank")
                     wait_for(lambda: server.monitor.connections == 0)
                     time.sleep(0.5)
                     page.goto(f"http://127.0.0.1:{port}")
                     wait_for(lambda: server.monitor.connections == 1)
                     assert thread.is_alive() and not server.should_exit
-                    server.monitor.grace = 1.5
                 for _ in range(3):
                     page.reload()
-                    expect(page.get_by_role("status")).to_have_text("APIに接続しました")
+                    expect(page.get_by_role("status")).to_have_attribute("data-state", "connected")
                 time.sleep(2)
                 assert thread.is_alive() and not server.should_exit
                 second = context.new_page()
@@ -73,12 +71,16 @@ def verify(crash: bool) -> None:
                 wait_for(lambda: server.monitor.connections == 1)
                 time.sleep(2)
                 assert thread.is_alive() and not server.should_exit
+                closed_at = time.monotonic()
                 if crash:
                     server.close_browser()
                 else:
                     second.close()
                 wait_for(lambda: not thread.is_alive())
                 assert server.monitor.connections == 0 and server.should_exit
+                elapsed = time.monotonic() - closed_at
+                assert 5 <= elapsed < 8, f"Unexpected shutdown delay: {elapsed:.2f}s"
+                print(f"UI close to backend shutdown: {elapsed:.2f}s (grace: 5s)")
             print(f"Automatic Chrome launch / reload / tabs / {'crash' if crash else 'close'}: OK")
         finally:
             server.should_exit = True

@@ -47,8 +47,10 @@ def main():
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 with running_app(settings) as url, disconnect_before_shutdown(page):
                     page.goto(url)
-                    page.get_by_label("プロジェクト名").fill("工程16受入")
-                    page.get_by_role("button", name="作成する", exact=True).click()
+                    # Legacy projects retain the config-based size changes this check covers.
+                    created = page.request.post(url + "/api/projects", data={"name": "工程16受入"})
+                    assert created.ok
+                    page.goto(url + "#/projects/1")
                     page.get_by_label("参考画像を選択").set_input_files(
                         {
                             "name": "reference.png",

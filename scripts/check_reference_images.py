@@ -26,9 +26,17 @@ def main():
                         errors = []
                         page.on("pageerror", lambda error: errors.append(str(error)))
                         page.goto(url)
-                        expect(page.get_by_role("status")).to_have_text("APIに接続しました")
+                        expect(page.get_by_role("status")).to_have_attribute(
+                            "data-state", "connected"
+                        )
                         if not restart:
                             for index, name in enumerate(("選択", "ドロップ")):
+                                page.get_by_role(
+                                    "link", name="LoopImageGenerator V2", exact=True
+                                ).click()
+                                page.get_by_role(
+                                    "link", name="新規プロジェクト", exact=True
+                                ).click()
                                 page.get_by_label("プロジェクト名").fill(name)
                                 page.get_by_role("button", name="作成する", exact=True).click()
                                 expect(
@@ -58,6 +66,9 @@ def main():
                                 expect(page.get_by_alt_text("初期参考画像")).to_be_visible()
                         for project_id, name in ((1, "選択"), (2, "ドロップ")):
                             page.get_by_role(
+                                "link", name="LoopImageGenerator V2", exact=True
+                            ).click()
+                            page.get_by_role(
                                 "button", name=f"{name}（#{project_id}）を開く"
                             ).click()
                             image = page.get_by_alt_text("初期参考画像")
@@ -66,7 +77,6 @@ def main():
                                 "document.querySelector('.reference-image')?.naturalWidth === 64"
                             )
                         page.reload()
-                        page.get_by_role("button", name="選択（#1）を開く").click()
                         expect(page.get_by_alt_text("初期参考画像")).to_be_visible()
                         assert not errors, errors
                     finally:

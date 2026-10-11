@@ -29,6 +29,13 @@ class Database:
                 connection.executescript(
                     "BEGIN;\n" + SCHEMA.read_text(encoding="utf-8") + "\nCOMMIT;"
                 )
+                columns = {row["name"] for row in connection.execute("PRAGMA table_info(projects)")}
+                if "generation_config_json" not in columns:
+                    connection.execute(
+                        "ALTER TABLE projects ADD COLUMN generation_config_json TEXT "
+                        "CHECK (generation_config_json IS NULL "
+                        "OR json_valid(generation_config_json))"
+                    )
             except BaseException:
                 connection.rollback()
                 raise

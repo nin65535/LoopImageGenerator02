@@ -17,7 +17,7 @@ def main() -> None:
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.goto(args.url)
             expect(page.get_by_role("heading", name="LoopImageGenerator V2")).to_be_visible()
-            expect(page.get_by_role("status")).to_have_text("APIに接続しました")
+            expect(page.get_by_role("status")).to_have_attribute("data-state", "connected")
             response = page.request.get(f"{args.url.rstrip('/')}/api/health")
             assert response.ok and response.json()["status"] == "ok"
             assert not errors, errors

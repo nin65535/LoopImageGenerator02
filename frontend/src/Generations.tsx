@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Generation = {
   id: number;
@@ -50,14 +51,6 @@ function Candidates({
   return (
     <section aria-label={`Generation #${generation.id}の画像評価`}>
       <h3>Generation #{generation.id}</h3>
-      <p className="note">
-        {generation.parent_id
-          ? `親 Generation #${generation.parent_id}`
-          : "参考画像から生成"}
-        {snapshot
-          ? ` · Generation #${snapshot.id}を生成した評価を表示（変更して新しい枝を作れます）`
-          : " · この世代から次の候補を生成できます"}
-      </p>
       <p>
         好き {liked}枚 · 嫌い {disliked}枚 · 未評価{" "}
         {generation.images.length - liked - disliked}枚
@@ -81,14 +74,6 @@ function Candidates({
                     : undefined,
               }}
             />
-            <p>
-              画像 {image.position + 1} ·{" "}
-              {ratings[image.id] === "liked"
-                ? "好き"
-                : ratings[image.id] === "disliked"
-                  ? "嫌い"
-                  : "未評価"}
-            </p>
             <div className="rating-buttons">
               <button
                 disabled={busy}
@@ -99,25 +84,22 @@ function Candidates({
               </button>
               <button
                 disabled={busy}
-                aria-pressed={ratings[image.id] === "disliked"}
-                onClick={() => rate(image.id, "disliked")}
-              >
-                嫌い
-              </button>
-              <button
-                disabled={busy}
                 aria-pressed={!ratings[image.id]}
                 onClick={() => rate(image.id)}
               >
                 未評価
               </button>
+              <button
+                disabled={busy}
+                aria-pressed={ratings[image.id] === "disliked"}
+                onClick={() => rate(image.id, "disliked")}
+              >
+                嫌い
+              </button>
             </div>
           </article>
         ))}
       </div>
-      <p className="note">
-        好き・嫌いを最低1枚選んでください。同じ評価を再クリックすると解除できます。未確定の評価は画面を閉じると解除されます。確定した評価は子世代に保存されます。
-      </p>
       <button
         disabled={busy}
         onClick={() => {
@@ -146,10 +128,12 @@ export default function Generations({
   projectId,
   registered = false,
   onCompleted,
+  breadcrumbHost,
 }: {
   projectId: number;
   registered?: boolean;
   onCompleted?: () => void;
+  breadcrumbHost?: HTMLElement | null;
 }) {
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -330,12 +314,51 @@ export default function Generations({
     cursor = cursor.parent_id ? byId.get(cursor.parent_id) : undefined;
   }
   path.reverse();
+  const progress = (
+    <div className="generation-progress">
+      <p role="status">画像生成・タグ付け中です…完了後に保存します。</p>
+      <div
+        className="generation-progress-track"
+        role="progressbar"
+        aria-label="画像生成・タグ付けの進行状況"
+      >
+        <span />
+      </div>
+    </div>
+  );
+  const breadcrumbs = (
+    <nav className="generation-breadcrumbs" aria-label="Generationの祖先経路">
+      <ol>
+        {path.map((item, index) => (
+          <li key={item.id}>
+            {index > 0 && (
+              <span className="breadcrumb-separator" aria-hidden="true">
+                ›
+              </span>
+            )}
+            {item.id === selected ? (
+              <span aria-current="page">Generation #{item.id}</span>
+            ) : (
+              <button
+                disabled={busy}
+                onClick={() => {
+                  rememberScroll();
+                  setSelected(item.id);
+                }}
+              >
+                Generation #{item.id}
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
   return (
     <section aria-labelledby="generations-title">
       <h2 id="generations-title">候補画像を評価</h2>
-      {busy && (
-        <p role="status">画像生成・タグ付け中です…完了後に保存します。</p>
-      )}
+      {busy &&
+        (breadcrumbHost ? createPortal(progress, breadcrumbHost) : progress)}
       {error && (
         <>
           <p role="alert">{error}</p>
@@ -383,10 +406,9 @@ export default function Generations({
               </option>
             ))}
           </select>
-          <p className="note">
-            表示中の経路: {path.map((item) => `#${item.id}`).join(" → ")} ·
-            過去の世代で評価を確定すると新しい枝を作成します。
-          </p>
+          {breadcrumbHost
+            ? createPortal(breadcrumbs, breadcrumbHost)
+            : breadcrumbs}
           <div ref={history} className="generation-history">
             {path.map((item, index) => (
               <div key={item.id} data-generation={item.id}>

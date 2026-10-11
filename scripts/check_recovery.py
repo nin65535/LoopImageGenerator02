@@ -81,10 +81,15 @@ def main():
                         page.get_by_role("button", name="好き", exact=True).click()
                         page.get_by_role("button", name="評価を確定して次世代を生成").click()
                         assert entered.wait(5)
+                        expect(
+                            page.locator(".app-header").get_by_role("progressbar")
+                        ).to_be_visible()
                         page.reload()
-                        page.get_by_role("button", name="復旧検証（#1）を開く").click()
                         expect(
                             page.get_by_text("画像生成・タグ付け中です…完了後に保存します。")
+                        ).to_be_visible()
+                        expect(
+                            page.locator(".app-header").get_by_role("progressbar")
                         ).to_be_visible()
                         assert (
                             len(page.request.get(url + "/api/projects/1/generations").json()) == 300
@@ -94,10 +99,12 @@ def main():
                             data={"parent_id": 1, "selection": {"liked": [1], "disliked": []}},
                         )
                         assert duplicate.status == 409
+                        assert page.request.delete(url + "/api/projects/1").status == 409
                         release.set()
                         expect(page.locator('[data-generation="301"]')).to_have_count(
                             1, timeout=10000
                         )
+                        expect(page.get_by_role("progressbar")).to_have_count(0)
                         assert (
                             len(page.request.get(url + "/api/projects/1/generations").json()) == 301
                         )

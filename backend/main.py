@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.app_options import OptionsStore, options_router
 from backend.config import Settings, load_settings
 from backend.database import Database
 from backend.generation_flow import flow_router
@@ -40,9 +41,11 @@ def create_app(
     app = FastAPI(title="LoopImageGenerator V2", lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
-    app.include_router(project_router(database))
-    app.include_router(reference_router(database, settings.storage_dir))
     running: set[int] = set()
+    options = OptionsStore(settings.storage_dir)
+    app.include_router(options_router(settings, options))
+    app.include_router(project_router(database, settings.storage_dir, running, settings, options))
+    app.include_router(reference_router(database, settings.storage_dir))
     app.include_router(generation_router(database, settings.storage_dir, running))
     app.include_router(flow_router(database, settings, running))
 

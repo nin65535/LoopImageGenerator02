@@ -16,13 +16,167 @@ h1 {
   font-size: clamp(2rem, 4vw, 3.5rem);
   margin: 12px 0;
 }
-.eyebrow {
-  color: #9dccff;
-}
 [role="status"] {
   padding: 20px;
   background: #222c3b;
   border-radius: 12px;
+}
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #151a23;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.header-breadcrumbs {
+  flex-basis: 100%;
+  min-width: 0;
+  max-height: 96px;
+  overflow-y: auto;
+}
+.header-breadcrumbs:empty {
+  display: none;
+}
+.header-breadcrumbs ol {
+  margin: 0 0 12px;
+}
+.generation-progress {
+  padding-bottom: 12px;
+}
+.generation-progress [role="status"] {
+  margin: 0 0 6px;
+  padding: 0;
+  background: transparent;
+  font-size: 0.875rem;
+}
+.generation-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #354154;
+}
+.generation-progress-track span {
+  display: block;
+  width: 35%;
+  height: 100%;
+  border-radius: inherit;
+  background: #9dccff;
+  animation: generation-progress 1.4s ease-in-out infinite alternate;
+}
+@keyframes generation-progress {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(185%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .generation-progress-track span {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+.app-header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+.header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.settings-link {
+  display: inline-flex;
+  padding: 6px;
+  color: #9dccff;
+  border-radius: 6px;
+}
+.settings-link:hover,
+.settings-link[aria-current="page"] {
+  background: #222c3b;
+}
+a:focus-visible {
+  outline: 2px solid #9dccff;
+  outline-offset: 4px;
+}
+.generation-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.generation-breadcrumbs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.generation-breadcrumbs button {
+  padding: 4px 8px;
+  background: transparent;
+  color: #9dccff;
+  text-decoration: underline;
+}
+.breadcrumb-separator {
+  color: #acb7c7;
+}
+.api-indicator-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+.api-indicator-wrapper:focus-visible {
+  outline: 2px solid #9dccff;
+  outline-offset: 4px;
+}
+.api-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: transparent;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.api-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #e7bd63;
+}
+.api-indicator[data-state="connected"] .api-dot {
+  background: #95e1b0;
+}
+.api-indicator[data-state="disconnected"] .api-dot {
+  background: #ff8e8e;
+}
+.api-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  width: max-content;
+  max-width: min(300px, 75vw);
+  padding: 8px 12px;
+  border: 1px solid #536176;
+  border-radius: 8px;
+  background: #222c3b;
+  box-shadow: 0 4px 16px #0006;
+  font-size: 0.875rem;
+  visibility: hidden;
+}
+.api-indicator-wrapper:hover .api-tooltip,
+.api-indicator-wrapper:focus-visible .api-tooltip {
+  visibility: visible;
 }
 .note {
   color: #acb7c7;
@@ -74,6 +228,29 @@ button[aria-pressed="true"] {
 .projects span {
   color: #acb7c7;
 }
+.delete-project {
+  background: #ffb6b6;
+}
+.project-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 640px);
+  align-items: start;
+}
+.model-whitelist label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.model-whitelist input {
+  flex-shrink: 0;
+}
+.save-settings {
+  margin-top: 24px;
+}
+.size-presets li {
+  margin: 8px 0;
+}
 .selected {
   padding: 24px;
   background: #222c3b;
@@ -107,9 +284,11 @@ button[aria-pressed="true"] {
 }
 .candidate[data-rating="liked"] {
   border-color: #95e1b0;
+  background: #244536;
 }
 .candidate[data-rating="disliked"] {
   border-color: #ffb6b6;
+  background: #4c2c34;
 }
 .candidate img {
   display: block;
@@ -119,12 +298,13 @@ button[aria-pressed="true"] {
   background: #151a23;
 }
 .rating-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
+  margin-top: 12px;
 }
 .rating-buttons button {
-  padding: 8px 12px;
+  padding: 8px 0;
 }
 button:focus-visible,
 select:focus-visible {

@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS projects (
     id                 INTEGER PRIMARY KEY,
     name               TEXT NOT NULL,
     initial_image_path TEXT NOT NULL,
+    generation_config_json TEXT CHECK (
+        generation_config_json IS NULL OR json_valid(generation_config_json)
+    ),
     created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

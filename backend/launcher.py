@@ -14,6 +14,7 @@ import uvicorn
 from backend.config import load_settings
 from backend.lifecycle import ConnectionMonitor
 from backend.main import DIST, create_app
+from backend.window_state import WindowStateStore, WindowsWindow, WindowTracker
 
 
 def find_chrome() -> str:
@@ -35,7 +36,10 @@ class AppServer(uvicorn.Server):
         self.headless = headless
         self.browser: subprocess.Popen | None = None
         self.watcher: asyncio.Task | None = None
+        self.window_watcher: asyncio.Task | None = None
+        self.window_tracker: WindowTracker | None = None
         settings = load_settings()
+        self.window_store = WindowStateStore(settings.storage_dir)
         self.monitor = ConnectionMonitor(
             self.request_exit,
             grace=settings.shutdown_grace,
@@ -70,14 +74,24 @@ class AppServer(uvicorn.Server):
         if self.headless:
             args.extend(["--headless=new", "--disable-gpu", "--remote-debugging-port=0"])
         self.browser = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.name == "nt" and not self.headless:
+            self.window_tracker = WindowTracker(WindowsWindow(self.browser.pid), self.window_store)
+            self.window_watcher = asyncio.create_task(self.window_tracker.watch())
         self.watcher = asyncio.create_task(self.monitor.watch())
 
     async def shutdown(self, sockets=None) -> None:
         if self.watcher:
             self.watcher.cancel()
+        if self.window_watcher:
+            self.window_watcher.cancel()
         await super().shutdown(sockets)
 
     def close_browser(self) -> None:
+        if self.window_tracker:
+            try:
+                self.window_tracker.tick()
+            except (OSError, ValueError):
+                logging.getLogger("uvicorn.error").warning("Cannot save final window state")
         if self.browser and self.browser.poll() is None:
             self.browser.terminate()
             try:

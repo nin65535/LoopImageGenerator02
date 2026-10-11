@@ -47,18 +47,44 @@ def main():
                         errors = []
                         page.on("pageerror", lambda error: errors.append(str(error)))
                         page.goto(url)
-                        expect(page.get_by_role("status")).to_have_text("APIに接続しました")
+                        expect(page.get_by_role("status")).to_have_attribute(
+                            "data-state", "connected"
+                        )
+                        indicator = page.locator(".api-indicator")
+                        tooltip = page.get_by_role("tooltip", include_hidden=True)
+                        expect(indicator).to_have_text("API:")
+                        expect(tooltip).to_be_hidden()
+                        indicator.hover()
+                        expect(tooltip).to_be_visible()
+                        expect(tooltip).to_have_text("APIに接続しました")
+                        bounds = indicator.bounding_box()
+                        title = page.get_by_role(
+                            "heading", name="LoopImageGenerator V2"
+                        ).bounding_box()
+                        assert bounds and title and bounds["width"] < 100 and bounds["height"] < 40
+                        assert bounds["x"] > title["x"] + title["width"]
+                        page.get_by_role("heading", name="LoopImageGenerator V2").hover()
+                        expect(tooltip).to_be_hidden()
                         if not restart:
                             expect(
                                 page.get_by_text("プロジェクトはまだありません。")
                             ).to_be_visible()
                             for name in ("海", "山"):
+                                page.get_by_role(
+                                    "link", name="新規プロジェクト", exact=True
+                                ).click()
                                 page.get_by_label("プロジェクト名").fill(name)
                                 page.get_by_role("button", name="作成する", exact=True).click()
                                 expect(
                                     page.get_by_role("heading", name=name, exact=True)
                                 ).to_be_visible()
+                                page.get_by_role(
+                                    "link", name="LoopImageGenerator V2", exact=True
+                                ).click()
                         for name, project_id in (("海", 1), ("山", 2)):
+                            page.get_by_role(
+                                "link", name="LoopImageGenerator V2", exact=True
+                            ).click()
                             page.get_by_role(
                                 "button", name=f"{name}（#{project_id}）を開く"
                             ).click()
@@ -72,7 +98,37 @@ def main():
                                 page.get_by_text("参考画像はまだ登録されていません。")
                             ).to_be_visible()
                         page.reload()
-                        expect(page.get_by_role("button", name="海（#1）を開く")).to_be_visible()
+                        expect(page.get_by_role("heading", name="山", exact=True)).to_be_visible()
+                        assert page.url.endswith("#/projects/2")
+                        expect(page.get_by_label("プロジェクト名")).to_have_count(0)
+                        page.get_by_role("link", name="設定", exact=True).click()
+                        expect(page.get_by_role("heading", name="設定", exact=True)).to_be_visible()
+                        expect(page.locator(".candidate")).to_have_count(0)
+                        page.go_back()
+                        expect(page.get_by_role("heading", name="山", exact=True)).to_be_visible()
+                        page.go_forward()
+                        expect(page.get_by_role("heading", name="設定", exact=True)).to_be_visible()
+                        page.get_by_role("link", name="LoopImageGenerator V2", exact=True).click()
+                        if restart:
+                            page.once("dialog", lambda dialog: dialog.dismiss())
+                            page.get_by_role("button", name="海（#1）を削除").click()
+                            expect(
+                                page.get_by_role("button", name="海（#1）を開く")
+                            ).to_be_visible()
+                            page.once("dialog", lambda dialog: dialog.accept())
+                            page.get_by_role("button", name="海（#1）を削除").click()
+                            expect(page.get_by_role("button", name="海（#1）を開く")).to_have_count(
+                                0
+                            )
+                            expect(
+                                page.get_by_role("button", name="山（#2）を開く")
+                            ).to_be_visible()
+                            page.reload()
+                            expect(page.get_by_role("button", name="海（#1）を開く")).to_have_count(
+                                0
+                            )
+                            page.goto(url + "#/projects/1")
+                            expect(page.get_by_role("alert")).to_contain_text("開けません")
                         assert not errors, errors
                     finally:
                         browser.close()

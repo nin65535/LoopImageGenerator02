@@ -9,7 +9,7 @@ class ConnectionMonitor:
     def __init__(
         self,
         shutdown: Callable[[], None],
-        grace: float = 10,
+        grace: float = 5,
         startup_timeout: float = 30,
         clock: Callable[[], float] = time.monotonic,
     ):

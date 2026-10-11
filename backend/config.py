@@ -18,7 +18,7 @@ class Settings(BaseModel):
     image_count: int = Field(default=10, ge=1)
     width: int = Field(default=512, ge=1)
     height: int = Field(default=512, ge=1)
-    shutdown_grace: int = Field(default=10, ge=1)
+    shutdown_grace: int = Field(default=5, ge=1)
     startup_timeout: int = Field(default=30, ge=1)
 
     @field_validator("comfyui_url")

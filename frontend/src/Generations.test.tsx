@@ -50,6 +50,9 @@ it("recovers a running generation after reload without submitting again", async 
   vi.stubGlobal("fetch", fetchMock);
   render(<Generations projectId={1} registered />);
   await screen.findByRole("status");
+  expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(
+    false,
+  );
   expect(
     (
       screen.getByRole("button", {
@@ -65,6 +68,7 @@ it("recovers a running generation after reload without submitting again", async 
   expect(fetchMock.mock.calls.every((call) => call[1]?.method !== "POST")).toBe(
     true,
   );
+  expect(screen.queryByRole("progressbar")).toBeNull();
 });
 
 it("renders a long ancestor chain and retains access to every generation", async () => {
@@ -119,7 +123,22 @@ it("reopens only the active ancestors and switches sibling snapshots", async () 
     target: { value: "3" },
   });
   expect(screen.getAllByRole("img")).toHaveLength(3);
-  expect(screen.getByText(/表示中の経路: #1 → #2 → #3/)).toBeTruthy();
+  const breadcrumbs = within(
+    screen.getByRole("navigation", { name: "Generationの祖先経路" }),
+  );
+  expect(
+    breadcrumbs
+      .getAllByRole("listitem")
+      .map((item) => item.textContent?.replace("›", "")),
+  ).toEqual(["Generation #1", "Generation #2", "Generation #3"]);
+  expect(
+    breadcrumbs.getByText("Generation #3").getAttribute("aria-current"),
+  ).toBe("page");
+  fireEvent.click(breadcrumbs.getByRole("button", { name: "Generation #2" }));
+  expect(screen.getAllByRole("img")).toHaveLength(2);
+  expect(
+    screen.queryByRole("region", { name: "Generation #3の画像評価" }),
+  ).toBeNull();
   view.unmount();
   render(<Generations projectId={1} />);
   await screen.findByRole("region", { name: "Generation #4の画像評価" });
