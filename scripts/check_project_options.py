@@ -23,11 +23,13 @@ def main():
         return TaggingResult("fixture", {"sky": None})
 
     async def generating(client, settings, **kwargs):
+        on_progress = kwargs.pop("on_progress", None)
+        on_image = kwargs.pop("on_image", None)
         calls.append((kwargs["checkpoint"], settings.width, settings.height))
         buffer = io.BytesIO()
         Image.new("RGB", (settings.width, settings.height), "steelblue").save(buffer, "PNG")
         seed = len(calls)
-        return GenerationResult(
+        result = GenerationResult(
             {
                 **kwargs,
                 "image_count": 1,
@@ -37,6 +39,11 @@ def main():
             },
             (GeneratedImage(0, seed, "fixture", buffer.getvalue(), {}),),
         )
+        if on_progress:
+            on_progress(1)
+        if on_image:
+            await on_image(result.images[0])
+        return result
 
     with (
         TemporaryDirectory(prefix="loop-options-") as directory,
@@ -45,7 +52,9 @@ def main():
         patch("backend.generation_flow.generate_images", generating),
         sync_playwright() as playwright,
     ):
-        settings = Settings(storage_dir=Path(directory), image_count=1)
+        settings = Settings(storage_dir=Path(directory)).model_copy(
+            update={"image_count": 1}  # Isolated UI fixture, not application configuration.
+        )
         browser = playwright.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1920, "height": 1080})
         errors = []
@@ -94,7 +103,11 @@ def main():
                 page.goto(url + "#/projects/1")
                 page.get_by_role("button", name="好き", exact=True).click()
                 page.get_by_role("button", name="評価を確定して次世代を生成").click()
-                expect(page.locator(".candidate")).to_have_count(2)
+                expect(page.locator(".candidate")).to_have_count(3)
+                child = page.get_by_role("region", name="Generation #2の画像評価")
+                expect(child.get_by_role("button", name="未評価", exact=True)).to_have_count(2)
+                for button in child.get_by_role("button", name="未評価", exact=True).all():
+                    expect(button).to_have_attribute("aria-pressed", "true")
                 assert calls == [(model, 640, 960), (model, 640, 960)]
                 generations = page.request.get(url + "/api/projects/1/generations").json()
                 assert all(
@@ -108,7 +121,7 @@ def main():
                 )
             with running_app(settings) as url, disconnect_before_shutdown(page):
                 page.goto(url + "#/projects/1")
-                expect(page.locator(".candidate")).to_have_count(2)
+                expect(page.locator(".candidate")).to_have_count(3)
                 assert (
                     page.request.get(url + "/api/projects/1").json()["generation_config"] == config
                 )

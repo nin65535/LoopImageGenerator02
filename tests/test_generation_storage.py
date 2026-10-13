@@ -168,14 +168,19 @@ def test_all_images_tagged_before_save(setup, monkeypatch, fail_at):
         return TaggingResult("tag", {"sky": None})
 
     monkeypatch.setattr("backend.generation_storage.tag_image", tag)
-    operation = tag_and_save_generation(None, database, storage, 1, result)
+    progress = []
+    operation = tag_and_save_generation(
+        None, database, storage, 1, result, on_progress=progress.append
+    )
     if fail_at:
         with pytest.raises(RuntimeError):
             asyncio.run(operation)
         assert_empty(database, storage)
+        assert progress == [1]
     else:
         assert asyncio.run(operation) == 1
         assert len(calls) == 3
+        assert progress == [1, 2, 3]
 
 
 def test_more_than_ten_images(setup):

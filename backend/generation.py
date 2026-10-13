@@ -4,6 +4,7 @@ import asyncio
 import io
 import math
 import secrets
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import httpx
@@ -78,6 +79,9 @@ async def generate_images(
     checkpoint: str,
     positive: str,
     negative: str = "",
+    positive_prompts: list[str] | None = None,
+    on_progress: Callable[[int], None] | None = None,
+    on_image: Callable[[GeneratedImage], Awaitable[None]] | None = None,
     steps: int = 20,
     cfg: float = 8.0,
     sampler: str = "euler",
@@ -89,6 +93,14 @@ async def generate_images(
             raise ValueError("Model and sampling identifiers must be non-empty strings")
     if not isinstance(positive, str) or not isinstance(negative, str):
         raise ValueError("Prompts must be strings")
+    if positive_prompts is not None:
+        if (
+            not isinstance(positive_prompts, list)
+            or len(positive_prompts) != settings.image_count
+            or any(not isinstance(value, str) for value in positive_prompts)
+        ):
+            raise ValueError("Provide exactly one positive prompt string per image")
+        positive_prompts = list(positive_prompts)
     if type(steps) is not int or not 1 <= steps <= 10000:
         raise ValueError("Steps must be an integer between 1 and 10000")
     if isinstance(cfg, bool) or not math.isfinite(cfg) or not 0 <= cfg <= 100:
@@ -112,6 +124,11 @@ async def generate_images(
         "height": settings.height,
     }
     images = []
+    if positive_prompts is not None:
+        parameters["image_prompts"] = [
+            {"position": position, "positive": value, "negative": negative}
+            for position, value in enumerate(positive_prompts)
+        ]
     seeds = set()
     prompt_id = None
     try:
@@ -122,7 +139,10 @@ async def generate_images(
                 while seed in seeds:
                     seed = secrets.randbelow(2**63)
                 seeds.add(seed)
-                workflow = build_workflow(parameters, seed)
+                effective = parameters
+                if positive_prompts is not None:
+                    effective = {**parameters, "positive": positive_prompts[position]}
+                workflow = build_workflow(effective, seed)
                 result = await client.execute(workflow, timeout=timeout)
                 prompt_id = result.prompt_id
                 node = result.outputs.get("9", {})
@@ -163,6 +183,10 @@ async def generate_images(
                 except Exception as exc:
                     raise ComfyUIError("Invalid generated image", prompt_id=prompt_id) from exc
                 images.append(GeneratedImage(position, seed, prompt_id, data, workflow))
+                if on_progress:
+                    on_progress(position + 1)
+                if on_image:
+                    await on_image(images[-1])
     except TimeoutError as exc:
         raise ComfyUITimeout("Image generation timed out", prompt_id=prompt_id) from exc
     parameters["seeds"] = [image.seed for image in images]

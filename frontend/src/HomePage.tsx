@@ -16,12 +16,14 @@ export default function HomePage({
   return (
     <>
       <a
+        className="new-project-link"
         href="#/projects/new"
         onClick={(event) => {
           event.preventDefault();
           onNew();
         }}
       >
+        <span aria-hidden="true">＋</span>
         新規プロジェクト
       </a>
       <section aria-labelledby="list-title">

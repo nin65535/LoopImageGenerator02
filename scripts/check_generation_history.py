@@ -25,7 +25,9 @@ def disconnect_before_shutdown(page):
 
 def main():
     with TemporaryDirectory(prefix="loop-history-") as directory:
-        settings = Settings(storage_dir=Path(directory), image_count=2, width=256, height=384)
+        settings = Settings(storage_dir=Path(directory), width=256, height=384).model_copy(
+            update={"image_count": 2}  # Isolated low-cost verification fixture.
+        )
         database = Database(settings.database_path)
         database.initialize()
         with database.transaction() as connection:
@@ -77,9 +79,7 @@ def main():
                     root = page.get_by_role("region", name="Generation #1の画像評価")
                     root.get_by_role("button", name="嫌い", exact=True).first.click()
                     root.get_by_role("button", name="評価を確定して次世代を生成").click()
-                    expect(
-                        page.get_by_text("画像生成・タグ付け中です…完了後に保存します。")
-                    ).to_be_visible()
+                    expect(page.get_by_role("progressbar")).to_be_visible()
                     page.evaluate(
                         "window.scrollTo(0, document.querySelector('[data-generation=\"1\"]')"
                         ".getBoundingClientRect().top + scrollY - 40)"
@@ -120,7 +120,7 @@ def main():
                 with running_app(settings) as url, disconnect_before_shutdown(page):
                     page.goto(url)
                     page.get_by_role("button", name="履歴検証（#1）を開く").click()
-                    expect(page.locator(".candidate")).to_have_count(6)
+                    expect(page.locator(".candidate")).to_have_count(7)
                     expect(
                         page.get_by_role("navigation", name="Generationの祖先経路").get_by_role(
                             "listitem"

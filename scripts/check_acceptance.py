@@ -66,7 +66,7 @@ def main():
                     region.get_by_role("button", name="嫌い", exact=True).nth(1).click()
                     assert page.request.get(url + "/api/projects/1/generations").json() == [root]
                     region.get_by_role("button", name="評価を確定して次世代を生成").click()
-                    expect(page.locator(".candidate")).to_have_count(4, timeout=300_000)
+                    expect(page.locator(".candidate")).to_have_count(5, timeout=300_000)
                     saved = page.request.get(url + "/api/projects/1/generations").json()
                     assert saved[0] == root
                     verify_weights(root, saved[1], saved[1]["selection"])
@@ -75,7 +75,7 @@ def main():
                 with running_app(settings) as url, disconnect_before_shutdown(page):
                     page.goto(url)
                     page.get_by_role("button", name="工程16受入（#1）を開く").click()
-                    expect(page.locator(".candidate")).to_have_count(4)
+                    expect(page.locator(".candidate")).to_have_count(5)
                     region = page.get_by_role("region", name="Generation #1の画像評価")
                     region.get_by_role("button", name="好き", exact=True).first.click()
                     region.get_by_role("button", name="評価を確定して次世代を生成").click()
@@ -87,7 +87,7 @@ def main():
                     verify_weights(root, branched[2], branched[2]["selection"])
                     for generation, count, width, height in (
                         (branched[0], 2, 256, 384),
-                        (branched[1], 2, 256, 384),
+                        (branched[1], 3, 256, 384),
                         (branched[2], 3, 384, 256),
                     ):
                         params = generation["parameters"]
@@ -107,10 +107,10 @@ def main():
                     page.get_by_role("button", name="工程16受入（#1）を開く").click()
                     expect(page.locator(".candidate")).to_have_count(5)
                     page.get_by_label("表示するGeneration").select_option("2")
-                    expect(page.locator(".candidate")).to_have_count(4)
+                    expect(page.locator(".candidate")).to_have_count(5)
                     assert page.request.get(url + "/api/projects/1/generations").json() == branched
                     assert not errors, errors
-                print(json.dumps({"generations": 3, "images": 7, "chrome_errors": errors}))
+                print(json.dumps({"generations": 3, "images": 8, "chrome_errors": errors}))
             finally:
                 browser.close()
 

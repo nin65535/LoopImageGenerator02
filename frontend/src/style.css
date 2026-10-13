@@ -61,26 +61,10 @@ h1 {
 }
 .generation-progress-track span {
   display: block;
-  width: 35%;
+  width: 0;
   height: 100%;
   border-radius: inherit;
   background: #9dccff;
-  animation: generation-progress 1.4s ease-in-out infinite alternate;
-}
-@keyframes generation-progress {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(185%);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .generation-progress-track span {
-    animation: none;
-    width: 100%;
-    opacity: 0.6;
-  }
 }
 .app-header h1 a {
   color: inherit;
@@ -180,6 +164,33 @@ a:focus-visible {
 }
 .note {
   color: #acb7c7;
+}
+.new-project-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 56px;
+  margin-top: 16px;
+  padding: 14px 24px;
+  border-radius: 10px;
+  background: #9dccff;
+  color: #151a23;
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.new-project-link:hover {
+  background: #c0dfff;
+}
+.new-project-link:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+}
+.new-project-link span {
+  font-size: 1.5rem;
+  line-height: 1;
 }
 section {
   margin-top: 32px;

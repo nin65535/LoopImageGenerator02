@@ -41,6 +41,18 @@ it("recovers a running generation after reload without submitting again", async 
       headers: new Headers({ "X-Generation-Running": "true" }),
       json: async () => [],
     })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        running: true,
+        percent: 50,
+        completed: 5,
+        elapsed_seconds: 120,
+        stage: "generating",
+        generated: 10,
+        image_count: 10,
+      }),
+    })
     .mockResolvedValueOnce({ ok: true, json: async () => ({ running: false }) })
     .mockResolvedValueOnce({
       ok: true,
@@ -51,7 +63,7 @@ it("recovers a running generation after reload without submitting again", async 
   render(<Generations projectId={1} registered />);
   await screen.findByRole("status");
   expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(
-    false,
+    true,
   );
   expect(
     (
@@ -60,6 +72,14 @@ it("recovers a running generation after reload without submitting again", async 
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
+  await waitFor(
+    () =>
+      expect(
+        screen.getByRole("progressbar").getAttribute("aria-valuenow"),
+      ).toBe("50"),
+    { timeout: 2500 },
+  );
+  expect(screen.getByRole("status").textContent).toContain("経過 120秒");
   await screen.findByRole(
     "region",
     { name: "Generation #1の画像評価" },
@@ -88,6 +108,56 @@ it("renders a long ancestor chain and retains access to every generation", async
     target: { value: "1" },
   });
   expect(container.querySelectorAll("img")).toHaveLength(1);
+});
+
+it("shows confirmed percentage and tagging count while a POST is pending", async () => {
+  let finish!: (response: unknown) => void;
+  const pending = new Promise((resolve) => {
+    finish = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, options?: RequestInit) => {
+      if (options?.method === "POST") return pending;
+      if (url.endsWith("generation-status"))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            running: true,
+            percent: 40,
+            stage: "tagging",
+            generated: 10,
+            tagged: 4,
+            completed: 4,
+            elapsed_seconds: 37,
+            image_count: 10,
+          }),
+        });
+      return Promise.resolve({ ok: true, json: async () => [] });
+    }),
+  );
+  render(<Generations projectId={1} registered />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "参考画像から候補を生成" }),
+  );
+  expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+    "0",
+  );
+  await waitFor(
+    () =>
+      expect(
+        screen.getByRole("progressbar").getAttribute("aria-valuenow"),
+      ).toBe("40"),
+    { timeout: 2500 },
+  );
+  expect(screen.getByRole("status").textContent).toContain("タグ付け 4/10枚");
+  expect(screen.getByRole("status").textContent).toContain("完了 4/10枚");
+  expect(screen.getByRole("status").textContent).toContain("経過 37秒");
+  expect(
+    (screen.getByRole("progressbar").firstChild as HTMLElement).style.width,
+  ).toBe("40%");
+  finish({ ok: true, json: async () => ({ id: 1 }) });
+  await waitFor(() => expect(screen.queryByRole("progressbar")).toBeNull());
 });
 
 it("reopens only the active ancestors and switches sibling snapshots", async () => {
@@ -146,6 +216,42 @@ it("reopens only the active ancestors and switches sibling snapshots", async () 
     target: { value: "3" },
   });
   expect(screen.getAllByRole("img")).toHaveLength(3);
+});
+
+it("starts carried liked images unrated in the child and allows rating them again", async () => {
+  const root = generation(1, 1);
+  const child = {
+    ...generation(2, 2, 1),
+    parameters: { width: 64, height: 96, carried_images: [{ position: 1 }] },
+    selection: { liked: [100], disliked: [] },
+  };
+  child.images[1].url = root.images[0].url;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => [root, child] }),
+  );
+  render(<Generations projectId={1} />);
+  const leaf = within(
+    await screen.findByRole("region", { name: "Generation #2の画像評価" }),
+  );
+  expect(
+    leaf
+      .getAllByRole("button", { name: "未評価" })
+      .every((button) => button.getAttribute("aria-pressed") === "true"),
+  ).toBe(true);
+  const copied = within(leaf.getByRole("article", { name: "画像 2" }));
+  expect(leaf.getAllByRole("article")[0].getAttribute("aria-label")).toBe(
+    "画像 2",
+  );
+  fireEvent.click(copied.getByRole("button", { name: "好き" }));
+  expect(
+    copied.getByRole("button", { name: "好き" }).getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(
+    within(screen.getByRole("region", { name: "Generation #1の画像評価" }))
+      .getByRole("button", { name: "好き" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
 });
 
 it("creates a sibling from a past ancestor and hides the previous branch", async () => {

@@ -15,7 +15,9 @@ from scripts.check_projects import running_app
 
 def main():
     with TemporaryDirectory(prefix="loop-flow-") as directory:
-        settings = Settings(storage_dir=Path(directory), image_count=2, width=256, height=384)
+        settings = Settings(storage_dir=Path(directory), width=256, height=384).model_copy(
+            update={"image_count": 2}  # Isolated low-cost verification fixture.
+        )
         stream = io.BytesIO()
         Image.new("RGB", (256, 384), "steelblue").save(stream, "PNG")
         with running_app(settings) as url, sync_playwright() as playwright:

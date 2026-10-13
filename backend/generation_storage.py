@@ -3,6 +3,7 @@
 import asyncio
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -140,8 +141,29 @@ async def tag_and_save_generation(
     *,
     parent_id: int | None = None,
     selection: dict | None = None,
+    on_progress: Callable[[int], None] | None = None,
 ) -> int:
-    tags = tuple([(await tag_image(client, image.data)).tags for image in result.images])
+    tagged = []
+    for image in result.images:
+        tagged.append((await tag_image(client, image.data)).tags)
+        if on_progress:
+            on_progress(len(tagged))
+    tags = tuple(tagged)
+    return await save_tagged_generation(
+        database, storage, project_id, result, tags, parent_id=parent_id, selection=selection
+    )
+
+
+async def save_tagged_generation(
+    database: Database,
+    storage: Path,
+    project_id: int,
+    result: GenerationResult,
+    tags: tuple[dict, ...],
+    *,
+    parent_id: int | None = None,
+    selection: dict | None = None,
+) -> int:
     # Once commit starts, wait for its outcome even if the caller is cancelled.
     task = asyncio.create_task(
         asyncio.to_thread(

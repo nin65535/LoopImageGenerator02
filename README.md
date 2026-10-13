@@ -2,104 +2,51 @@
 
 **画像を選ぶだけで、次の画像が生まれる。**
 
-LoopImageGenerator V2は、参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。ユーザーにプロンプト入力を要求しません。画像生成・タグ付けの実処理はComfyUIのAPIへ委任します。
-
-> **開発状況：工程16・統合テスト・配布準備 完了（2026-10-10時点、工程17・人力受入検証は未実施）**
-> 参考画像から次世代生成までを接続済みです。選んだ世代の祖先から末端まで履歴を表示し、過去世代からの分岐・兄弟枝の切替・保存後の再開ができます。進捗は [ロードマップ](documents/ROADMAP.md) を参照してください。
+参考画像を起点に、生成結果の「好き」「嫌い」を選びながら画像探索を繰り返すローカルアプリです。プロンプト入力は不要。画像生成・タグ付けにはComfyUIを使い、履歴をSQLiteに保存します。
 
 ## 使い方
 
-トップの「新規プロジェクト」から専用作成ページへ移動し、名前・モデル・画像サイズを選びます。モデルは導入済みの対象モデルとホワイトリストの共通部分から選択します。固定サイズは1024×1024・768×1344・1344×768です。ヘッダー右上の歯車から設定を開き、許可モデルの切替とサイズの追加・削除を行い、「設定を保存」で反映します。追加サイズは16～16384の8の倍数、固定サイズは削除できません。
+1. 「新規プロジェクト」で名前・モデル・画像サイズを選びます。
+2. 参考画像を登録し、「参考画像から候補を生成」を押します。
+3. 候補に「好き」「嫌い」を付けます。合計1枚以上の評価で次へ進めます。
+4. 「評価を確定して次世代を生成」を押し、探索を繰り返します。
 
-作成時のモデル・サイズはプロジェクトに保存し、初回生成・次世代・分岐で引き継ぎます。設定の選択肢を変更しても既存プロジェクトは変わりません。モデルファイルが後から削除された場合は生成を拒否します。従来のプロジェクトは従来の設定・モデル継承を維持します。
+過去世代からの分岐、枝の切替、保存済みプロジェクトの再開に対応します。「好き」の画像は次世代にも引き継がれ、再評価できます。生成中は進捗と経過時間を表示します。
 
-個別ページで参考画像の登録・世代の閲覧・評価・生成を行います。スクロールに追従するヘッダーのタイトルでトップへ、右上の歯車アイコンで設定へ移動します。URLの `#/projects/new`・`#/projects/ID` から直接開け、再読み込みやブラウザの戻る・進むにも対応します。世代のパンくずには表示中Generationの祖先経路を表示し、祖先を選択してその世代までの履歴へ戻れます。
+参考画像はPNG・JPEG・WebPの静止画像（最大20MiB・2,500万画素）に対応します。別の参考画像を使う場合は新規プロジェクトを作成してください。プロジェクトの削除は取り消せません。
 
-トップの「削除」は確認後にプロジェクトと所属するすべての世代・画像・参考画像を削除します。取り消しはできません。生成中のプロジェクトは削除を拒否します。画像ファイルの清掃に失敗した場合はログを記録し、次回起動時の既存清掃処理で再試行します。
+## セットアップ・起動
 
-1. 新規プロジェクトを作成し、最初の参考画像を投入します。
-2. 「参考画像から候補を生成」を押すと、ComfyUIが画像をタグ付けし、設定した枚数の候補を生成します（初期値10枚）。
-3. 候補に「好き」「嫌い」を付けます。どちらか合計1枚以上を指定すれば次へ進めます。未評価の画像はそのままで構いません。
-4. 「評価を確定して次世代を生成」を押すと、選択画像のタグ差分を利用し、前回までの条件を50%引き継ぎながら次の候補を生成します。
-5. 満足するまで繰り返します。「表示するGeneration」で経路の末端を選ぶと祖先からの履歴を表示します。過去世代の評価を確定して新しい枝を作れます。「枝 #…を開く」で子の経路へ切り替えられます。再開時は最新保存世代の経路を表示し、他の経路も選び直せます。
+Python 3.12以上、Node.js 22.12以上、npm、Chrome、起動済みのComfyUIが必要です。ComfyUIには使用するモデルと `WD14Tagger|pysssss` を導入します。セットアップ・設定変更はAIが担当します。
 
-新規プロジェクトの初回生成は作成時に選んだモデルを使います。従来のプロジェクトの初回生成はComfyUIの導入済みチェックポイント一覧の先頭を使います。子世代は親のsampling条件を引き継ぎます。生成失敗時は評価を維持し、保存済み結果を再読込できます。
-
-生成中にブラウザを更新した場合は、プロジェクトを開き直すと実行状況を確認して完成結果を自動取得します。同一プロジェクトの重複生成は拒否します。バックエンドが終了した実行は再開せず、完成済み履歴から再試行します。起動時はアプリが作った未参照の一時画像・保存残骸を清掃します。同じ保存先を使うバックエンドは同時に1つだけ起動できます。外部で削除された画像は復元しません。
-
-工程15の再読み込み・重複送信・300世代履歴の実Chrome検証（ComfyUI不要、固定の生成結果を使用）：
-
-```powershell
-.venv/Scripts/python -m scripts.check_recovery
-```
-
-保存済みの親画像評価は選んだ経路ごとに表示され、変更して新たな枝を生成できます。未確定の編集は保存しません。生成完了時は最下部を見ている場合だけ追従し、過去を閲覧している間は表示位置を維持します。
-
-同じ選択から繰り返し生成しても、乱数seedが変わるため異なる結果を探索できます。画像拡大や高解像度仕上げの機能は対象外です。
-
-## 特徴
-
-- プロンプト不要。参考画像と好き／嫌いの選択を主な入力とする。
-- 生成枚数とアスペクト比はコンフィグから変更可能。
-- 各画像のタグ情報と生成に使用したパラメータを履歴として保存。
-- 世代を木構造で管理し、任意の段階から分岐・再開可能。
-- チャットのように生成履歴を下へ追加するデスクトップ向け縦スクロールUI。
-- DBには完全に生成・タグ付け済みのGenerationだけを登録。未確定の選択は保存しない。
-
-## システム構成
-
-| レイヤー | 技術 | 役割 |
-|---|---|---|
-| UI | React / TypeScript + Chrome | 画像一覧、好き／嫌い選択、履歴・分岐表示 |
-| API | FastAPI / Python | ComfyUI連携、タグ集計、生成とライフサイクル制御 |
-| データベース | SQLite | projects / generations / images |
-| 画像生成・タグ付け | ComfyUI API | Stable Diffusionによる生成、WD14Tagger等によるタグ付け |
-
-バックエンド起動時に専用Chromeウィンドウを自動表示し、SSE接続監視を使って最後のUI接続が切れてから5秒後にバックエンドも停止します。再読み込みや瞬断は猶予内の再接続で継続します。想定環境はデスクトップの1920px幅モニタです。
-
-## データモデル
-
-- **Project**: 参考画像から始まる一連の生成履歴。
-- **Generation**: 親Generation、親画像の選択結果、実際に使った生成パラメータを持つ完成済みノード。
-- **Image**: Generationで出力された画像とseed・タグJSON。各Generationの枚数は設定に従う。
-
-過去のGenerationを書き換えずに新しい子ノードを追加することで、同じ親から複数の経路を残します。
-
-## 開発・起動方法
-
-Python 3.12以上、Node.js 22.12以上（検証環境：Python 3.12.4 / Node.js 26.9.0）、npmを使用します。以下はAIが行うセットアップ・起動・検証の再現手順です。コードの手入力・修正は不要です。
-
-リポジトリルートで依存関係を導入します。
+リポジトリルートで依存関係を導入し、UIをビルドして起動します。
 
 ```powershell
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt
 npm --prefix frontend ci
+npm --prefix frontend run build
+.venv/Scripts/python -m backend.launcher
 ```
 
-開発時は2つのターミナルで、それぞれAPIとUIを起動します。
+`http://127.0.0.1:8000` を専用Chromeで自動表示します。すべてのUI接続が切れてから5秒後にバックエンドも終了します。
+
+開発時はAPIとUIを別々のターミナルで起動します。
 
 ```powershell
 .venv/Scripts/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 npm --prefix frontend run dev
 ```
 
-UIは `http://127.0.0.1:5173`。Viteが `/api` をローカルAPIへ転送するため、画面は相対URLで通信します。APIの疎通確認は `http://127.0.0.1:8000/api/health`。アクセスログと疎通ログはAPIのコンソール、接続失敗の詳細はブラウザのコンソールへ出力します。
+開発用UIは `http://127.0.0.1:5173`。この起動方法ではChromeの自動起動・自動終了は行いません。
 
-配布用UIは次の手順でビルドし、FastAPIから配信します。開発用APIを停止してから起動してください。
+## 設定
 
-```powershell
-npm --prefix frontend run build
-.venv/Scripts/python -m backend.launcher
-```
+- [config.toml](config.toml)：ComfyUIのURL、保存先、生成枚数など。変更後は再起動します。既定は `http://127.0.0.1:8188`、`data/`、新規10枚（最低6枚）です。
+- 画面右上の歯車：許可モデルと追加画像サイズを管理します。
+- プロジェクト作成時：モデルと画像サイズを選び、次世代・分岐でも引き継ぎます。固定サイズは1024×1024・768×1344・1344×768です。
 
-APIの待受開始後、`http://127.0.0.1:8000` を専用Chromeで自動表示します。起動ごとの一時プロファイルを使い、普段のChromeとは独立して動作します。全UI接続が切れてから5秒で終了し、初回接続が30秒以内に来ない場合も終了します。Chrome未導入・UI未ビルドは起動時にエラーを表示します。ポート変更は `--port 8001` で指定できます。Ctrl+Cでも停止できます。
-
-Windowsでは専用Chromeの通常時の位置・サイズと最大化on/offを保存し、次回起動時に復元します。保存先はデータ保存ディレクトリの `window-state.json`。最小化は引き継がず、直前の通常／最大化状態を維持します。保存情報がない場合や壊れている場合はChromeの通常の起動位置を使います。
-
-配信には `backend/`、`sql/schema.sql`、`config.toml` と `frontend/dist/`、Pythonの実行環境と `requirements.txt` の依存が必要です。実行ファイル化などの最終配布方式は保留です。開発用の `uvicorn backend.main:app --reload` はChrome自動起動・自動終了を行いません。
-
-基本検証（リポジトリルート）：
+## 基本検証
 
 ```powershell
 .venv/Scripts/python -m pytest
@@ -113,172 +60,10 @@ python scripts/check_repository.py
 git diff --check
 ```
 
-APIテストは疎通・静的配信・プロジェクト作成・入力検証・プロジェクト間の分離・再起動後の永続性を、UIテストはAPI接続・作成・切替・応答順序の逆転・作成失敗を検証します。資料検証スクリプトは構成とローカルMarkdownリンクを検証します。
-
-起動済みのAPI・UIとインストール済みChromeを使ったブラウザ検証：
-
-```powershell
-.venv/Scripts/python scripts/check_browser.py
-.venv/Scripts/python scripts/check_browser.py --url http://127.0.0.1:5173
-```
-
-1つ目はビルド済みUI、2つ目は開発用UIのReact表示とAPI通信を1920pxのヘッドレスChromeで検証します。工程02の検証にComfyUIは不要です。
-
-工程03のChrome自動起動・SSE監視・終了の統合検証（事前のAPI起動は不要）：
-
-```powershell
-.venv/Scripts/python -m scripts.check_lifecycle
-```
-
-ビルド済みUIとインストール済みChromeを使用し、連続再読み込み、複数タブ、最後のタブ終了、Chrome強制終了後のバックエンド停止をヘッドレスChromeで確認します。検証時のみ終了猶予を1.5秒に短縮します。
-
-ディレクトリの責務は [ARCHITECTURE.md](ARCHITECTURE.md)、仕様概要は [SPEC.md](SPEC.md) に記載しています。ユーザーにコードの手入力・書き換えを要求せず、セットアップと実装・検証はAIが担当します。
-
-## プロジェクトの作成と再開
-
-画面の「新規プロジェクト」で名前を入力し、「作成する」を押します。名前の前後の空白は除去し、1〜200文字を受け付けます。同名でもIDで区別します。「プロジェクトを選んで再開」から保存済みプロジェクトを開けます。アプリを終了してもSQLiteに保持され、次の起動で一覧から選択できます。選択中のプロジェクトは画面内の一時状態で、再読み込み後は選び直します。
-
-APIは `POST /api/projects`（JSON: `{"name":"名前"}`）、`GET /api/projects`、`GET /api/projects/{id}`。詳細には保存済み世代数と参考画像の登録状態を返し、存在しないIDは404、不正入力は422になります。参考画像未登録時はDBの `initial_image_path` を空文字、APIでは `null` として扱います。プロジェクト作成ではGenerationや画像行を作りません。保存済み世代の画像一覧・評価UI・枝の再開に対応します。
-
-プロジェクトを開き、参考画像を1枚ドロップするか「参考画像を選択」で登録します。PNG・JPEG・WebPの静止画像、最大20MiB・2,500万画素に対応します。拡張子や申告された形式に依存せず実際に画像を検証し、保存先の `references/` にランダムな名前で保存します。登録済み画像は再開時にも表示され、上書きはできません。別の参考画像を使う場合は新規プロジェクトを作成してください。
-
-`PUT /api/projects/{id}/initial-image` は画像バイナリを直接受け付けます（multipart形式ではありません）。成功時は更新されたプロジェクトを返します。容量・画素数超過は413、未対応形式・アニメーションは415、破損画像は422、登録済みは409です。`GET /api/projects/{id}/initial-image` で画像を取得できます。登録失敗時はDBをロールバックし、作成したファイルを清掃します。参考画像登録でもGeneration・画像行は作りません。プロセス強制終了時の残骸は次回起動時に清掃します。
-
-画像選択・ドロップ・破損画像からの再試行・再読み込み・再起動後の表示を実Chromeで検証する手順：
-
-```powershell
-.venv/Scripts/python -m scripts.check_reference_images
-```
-
-一時DBと1920pxの実Chrome（ヘッドレス）で、作成・切替・再読み込み・APIとChrome終了後の再開を検証できます。実データは変更しません。
-
-```powershell
-.venv/Scripts/python -m scripts.check_projects
-```
-
-## 設定とSQLite初期化
-
-ルートの `config.toml` でComfyUI URL、保存ディレクトリ、生成枚数、幅・高さ、SSE終了猶予・初回接続待ち時間（秒）を設定します。既定値はURL `http://127.0.0.1:8188`、保存先 `data/`、10枚、512×512、5秒・30秒です。設定変更の反映には再起動が必要です。枚数・寸法・待ち時間は正の整数、URLはHTTP(S)とし、不明なキーや不正値は起動時に拒否します。
-
-`LOOP_IMAGE_CONFIG` 環境変数で別のTOMLファイルを指定できます。相対保存先は設定ファイルの所在を基準に解決します。既定ファイルがない場合は組み込み初期値を使用し、明示指定したファイルがない場合はエラーにします。
-
-API起動時に保存先を作成し、`loop-image-generator.sqlite3` に `sql/schema.sql` の3テーブルを初期化します。再起動時は既存データを保持します。初期化だけ行う場合のAI実行手順：
-
-```powershell
-.venv/Scripts/python -c "from backend.config import load_settings; from backend.database import Database; Database(load_settings().database_path).initialize()"
-```
-
-`Database.connect()` は毎接続で外部キーを有効化して終了時に閉じ、`Database.transaction()` は成功時コミット・例外時ロールバックを行います。枚数と画像行数の一致、評価IDの整合性、完成Generationの保存とファイル管理は実装済みです。既存DBの制約変更を移行する仕組みは未実装です。
-
-## 開発方針
-
-V1は手作業による開発でしたが、V2は**人間による手打ちコード0行**で開発します。人間は要件と完成判定を担当し、ソースコード、設定、SQL、テスト、CI等の作成・修正はAIが行います。開発者向けの詳細指示は [`AGENTS.md`](AGENTS.md) を参照してください。
-
-## 資料・参照先
-
-- V1: https://github.com/nin65535/loop-image-generator
-- V2: https://github.com/nin65535/LoopImageGenerator02
-- 企画書・DDL・実装ロードマップ・工程書: https://drive.google.com/drive/folders/1lnxWhstGr4h6vCoc9bffuVLM7zmn9OOB
-
-## 非対象・将来課題
-
-- 非対象：画像のアップスケール、仕上げ機能、ユーザーへのプロンプト手入力要求。
-- 将来課題：タグ推定確率の取得、評価反映アルゴリズムの精緻化。
-
-## ComfyUIワークフロー実行（工程07）
-
-`backend/comfyui.py` がAPI形式JSONの読み込み、`POST /prompt`、返却されたprompt_idの`GET /history/{prompt_id}`監視を担当します。成功は履歴のcompleted=trueとstatus_str=successで判定し、outputsと履歴全体を返します。HTTPエラー・接続失敗・不正JSON・実行エラー・中断は例外として診断情報と取得済みprompt_idを保持します。タグ解析と生成UIへの接続は実装済みです。
-
-AIによる実機検証手順（起動済みComfyUIをconfig.tomlのURLで使用）：
-
-```powershell
-.venv/Scripts/python -m scripts.check_comfyui workflows/connection_check.json --timeout 30
-.venv/Scripts/python -m scripts.check_comfyui workflows/connection_check_invalid.json --timeout 30
-```
-
-1つ目はモデル不要のEmptyImage→PreviewImageで64×64画像をComfyUIの一時領域に出力し、成功時は終了コード0とprompt_id・outputsを表示します。2つ目は意図的な存在しないノードで失敗し、終了コード1と診断JSONを表示するのが期待結果です。DBや既存プロジェクトは変更しません。
-
-任意のAPI形式ワークフローJSONも同じコマンドで実行できます。エディタ保存形式は拒否します。ComfyUIがサーバー側でノード・入力の妥当性を検証します。ワークフロー固有のモデルやカスタムノードは実行先に必要です。[公式APIサンプル](https://github.com/Comfy-Org/ComfyUI/blob/master/script_examples/basic_api_example.py)と[公式サーバー実装](https://github.com/Comfy-Org/ComfyUI/blob/master/server.py)を参照して実装しています。
-
-待機上限は投入を含め既定300秒、履歴確認間隔は0.5秒、各HTTP要求は最大30秒です。通信失敗時の自動再投入は行いません。タイムアウトや呼び出し側のキャンセルで待機を終えてもComfyUI側の実行は継続する可能性があります。投入応答を受け取れなかった場合はprompt_idが不明になるため、ComfyUI側のキューを確認してから再実行します。診断出力にはワークフロー由来の情報が含まれる場合があります。
-
-
-## ComfyUI画像タグ付け（工程08）
-
-`backend/tagging.py` の `tag_image(client, data)` は検証済みのPNG・JPEG・WebP画像を、ランダムな名前で `/upload/image` に送信し、LoadImage→WD14Taggerを実行します。`history.outputs["2"].tags` の1画像分の文字列を直接読み、空白・空要素・重複を取り除いて `{"solo": null, "red_hair": null}` 形式で返します。アンダースコアとタグ内のエスケープを保持します。確率は取得せずnullを使用し、TXTの保存・再取得は行いません。[WD14Taggerの実装](https://github.com/pythongosssss/ComfyUI-WD14-Tagger/blob/main/wd14tagger.py)のUI出力形式と、実機の履歴で確認しました。
-
-タグ出力の欠落・不正形式・複数画像分の出力はエラー、正常な空文字列は空JSON `{}` とします。生成・保存へ連結する工程で空タグ時の扱いを判断できます。エラーには取得済みprompt_idを保持します。DBやGenerationは変更せず、画面への自動連結は工程13で行います。
-
-AIによる実機検証手順（画像パスは検証対象に合わせて指定）：
-
-```powershell
-.venv/Scripts/python -m scripts.check_tagging path/to/reference.png --timeout 300
-```
-
-実行先に `WD14Tagger|pysssss` が必要です。既定モデルはノード標準の `wd-v1-4-moat-tagger-v2`、一般タグ閾値0.35・キャラクター閾値0.85です。CLIの `--model` でモデル、`--threshold` で一般タグ閾値を指定でき、Python関数ではキャラクター閾値も指定できます。モデル未導入の場合、WD14ノード自身がモデルをダウンロードする場合があります。モデル・ワークフローの恒久的な設定は未確定のままです。
-
-投入から完了までの待機上限は画像送信を含め既定300秒です。タイムアウト後もリモート実行が続く可能性があります。送信した入力画像はComfyUI側に残ります。共有ComfyUIの画像を誤削除しないよう、この工程では削除APIを実装していません。入力画像・履歴の清掃方針は工程15で扱います。
-
-## タグ評価の計算（工程09）
-
-`backend/tag_feedback.py` の `update_tag_weights(previous, liked=..., disliked=...)` は、前回のタグ重みと、好き・嫌いそれぞれの画像タグ辞書の配列を受け取ります。タグ確率は使わず、各群で「タグがある画像数 ÷ 選択画像数」を計算します。空タグ画像も分母に含め、好き・嫌いがともに0枚の場合は拒否します。画像IDの所属・重複・交差の検証は後続の生成・保存境界で行います。
-
-実画像で調整するための暫定方式として、重みは-1〜1の符号付き値を使います。今回の値は好きのみなら正の出現率、嫌いのみなら負の出現率、共通なら前回の重み、どちらにもない場合は0です。次の重みは `0.5 × 前回 + 0.5 × 今回`。共通タグは維持し、新規共通タグは判断保留で重みを付けません。未出現の以前のタグは半減します。値が0なら除去、正ならpositive、負ならnegative候補とし、negative辞書には絶対値を返します。例えば前回1のタグを嫌い画像すべてが持つ場合、次は0で除去され、もう一度同じ評価を受けると-0.5になります。
-
-返却値には群別出現率、共通タグ、符号付き重み、positive/negative辞書、継承率0.5を含めます。入力を変更せず、DB・ファイルへ保存しません。初期参考画像からの条件作成とComfyUI用プロンプトへの変換・実行は後続工程です。固定データと工程08のタグ解析結果で検証済みですが、実画像での生成品質と精密な数式・移行判定は引き続き保留です。
-
-## 可変枚数・アスペクト比の生成（工程10）
-
-`backend/generation.py` の `generate_images(client, settings, checkpoint=..., positive=..., negative=...)` は設定のimage_count・width・heightを使い、標準のCheckpointLoaderSimple→CLIPTextEncode→KSampler→VAEDecode→PreviewImageで生成します。[公式API例](https://github.com/Comfy-Org/ComfyUI/blob/master/script_examples/basic_api_example.py)と実機のノード定義を確認しました。checkpointは呼び出し側が明示し、恒久的なモデル選定は保留です。アプリ利用者向けのプロンプト入力UIは追加していません。タグからの条件変換と画面への接続は工程13です。
-
-seedを画像と確実に対応させるためbatch_size=1で要求枚数を順番に実行します。実行ごとに暗号学的乱数で新しいseedを採番し、同一実行内の重複を避けます。seedはSQLite INTEGERに保存できる0〜2^63−1。返却結果は各画像のbytes・position・seed・prompt_id・投入workflowと、共通の生成条件（モデル・プロンプト・枚数・寸法・steps・cfg・sampler・scheduler・denoise・seed一覧）を保持します。寸法は標準ノードの制約に合わせ16〜16384の8の倍数を要求し、設定値の丸めは行いません。
-
-`/view`で画像を取得し、形式・破損・要求寸法との一致を検証します。出力欠落・余分な画像・取得失敗・不正画像では部分結果を返しません。待機上限は候補群全体で既定300秒。DBとローカル画像ファイルは変更せず、結果はメモリ内です。全画像のタグ付けとステージング・一括保存は工程11。ComfyUI側の一時画像は残り、タイムアウト後もリモート実行が続く可能性があります。
-
-AIによる実機確認（導入済みcheckpointを指定、プロンプトは検証スクリプト内で用意）：
-
-```powershell
-.venv/Scripts/python -m scripts.check_generation boleromixIllustrious_v402.safetensors --count 2 --width 256 --height 384 --steps 4
-.venv/Scripts/python -m scripts.check_generation boleromixIllustrious_v402.safetensors --count 3 --width 384 --height 256 --steps 4
-```
-
-検証用の低stepsで枚数・寸法・取得を確認した手順です。生成品質や最適なモデル・サンプリング条件の評価は未実施です。
-
-## 完成Generationの保存（工程11）
-
-`backend/generation_storage.py` の `tag_and_save_generation` は工程10の生成結果を受け取り、全画像のタグ付けに成功してから `save_generation` を呼び出します。正常な空タグは `{}` として保存し、出力欠落・タグ付け失敗時は保存しません。要求枚数・タグ数・連続position・seed一覧の一致と、親Generationのプロジェクト所属、好き／嫌いIDの親所属・整数型・重複・交差・最低1評価を検証します。ルートの親IDと選択はnullです。
-
-画像は保存先の `staging/<ランダムID>/` に書き込み、単一トランザクション内でGenerationと全画像行を追加し、`generations/<ランダムID>/` へ移動してからコミットします。通常の書込・移動・DBコミット失敗ではロールバックし、今回のファイルも清掃します。既存世代は変更せず、子の評価と生成条件をJSONスナップショットとして保持します。保存開始後のキャンセルでは保存処理の終了を待ちます。プロセス強制終了・電源断による残骸の清掃は工程15、API・UIからの生成接続は工程13です。
-
-AIによる実機検証は既存プロジェクトを変更しない一時DB・保存先で行います。終了時にローカル検証データを清掃します（ComfyUI側の入力・一時画像は残ります）。
-
-```powershell
-.venv/Scripts/python -m scripts.check_generation_storage boleromixIllustrious_v402.safetensors --count 2
-```
-
-256×384・4stepsで生成とタグ付けを実行し、DB再接続後の枚数・生成条件・個別seed・タグJSON・画像bytesを照合します。
-
-## Generationの画像一覧・評価（工程12）
-
-プロジェクトを開くと最新の保存済みGenerationの候補画像を表示します。「表示するGeneration」で対象を選び、画像ごとの「好き」「嫌い」「未評価」を切り替えます。同じ評価の再クリックでも未評価に戻せます。「評価を確認」は好き・嫌いの合計が最低1枚あることを検証します。嫌いのみでも確認できます。
-
-評価は画面内だけに保持し、Generationやプロジェクトの切替・再読み込みで解除します。DBには保存しません。次世代生成への接続は工程13で追加します。生成の画面操作はまだ提供していないため、候補画像表示には工程11で保存したGenerationが必要です。
-
-`GET /api/projects/{id}/generations` は生成条件とposition順の画像一覧を返します。各画像の `url` は `GET /api/projects/{id}/images/{image_id}` を指します。別プロジェクトの画像、不明ID、欠落ファイルは404です。
-
-本番UIをビルド後、ComfyUIを使用せず一時DBとテスト画像で1920px Chromeの操作を検証できます。
-
-```powershell
-.venv/Scripts/python -m scripts.check_generation_ui
-```
-
-## 工程16の自動検証・配布準備と工程17の人力受入
-
-[受入確認表](documents/ACCEPTANCE.md) に前提環境・自動検証・手動操作の確認項目をまとめています。AIが設定と起動を担当し、人間によるコード修正は不要です。
-
-```powershell
-.venv/Scripts/python -m scripts.check_acceptance
-.venv/Scripts/python -m scripts.prepare_distribution
-```
-
-受入検証は実ComfyUIとChromeで3世代・7画像、50%継承、2枚から3枚への変更、縦横比変更、分岐と再起動後の再開を確認します。一時保存先を使用します。配布候補ZIPは `artifacts/LoopImageGeneratorV2.zip`。Pythonソースとビルド済みUIを含み、利用時のNode.jsは不要です。AIが展開先で仮想環境と `requirements.txt` の依存を準備します。工程16は完了です。表示ウィンドウでの人力受入検証は工程17で実施します。別PC・新規Python環境での検証と最終配布方式は保留です。
+## 関連資料
+
+- [仕様概要](SPEC.md)
+- [システム構成](ARCHITECTURE.md)
+- [企画書](documents/PROJECT_PLAN.md)
+- [受入確認表](documents/ACCEPTANCE.md)
+- [AI開発ルール](AGENTS.md)：人間の手打ちコード0行で開発します。

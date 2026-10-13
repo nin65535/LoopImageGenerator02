@@ -47,7 +47,7 @@ def run(count=2, width=64, height=96, failure=None, **kwargs):
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
             return await generate_images(
                 ComfyUIClient(http, "http://comfy"),
-                Settings(image_count=count, width=width, height=height),
+                Settings(width=width, height=height).model_copy(update={"image_count": count}),
                 checkpoint="model.safetensors",
                 positive="sky",
                 **kwargs,
@@ -102,6 +102,65 @@ def test_invalid_outputs_never_return_partial_result(failure):
 def test_invalid_parameters(kwargs):
     with pytest.raises(ValueError):
         run(**kwargs)
+
+
+def test_per_image_prompts_match_workflows_and_snapshots():
+    prompts = ["sky", "tree"]
+    result, workflows = run(positive_prompts=prompts, negative="rain")
+    assert result.parameters["positive"] == "sky"
+    for position, workflow in enumerate(workflows):
+        saved = result.parameters["image_prompts"][position]
+        assert saved == {"position": position, "positive": prompts[position], "negative": "rain"}
+        assert workflow["6"]["inputs"]["text"] == saved["positive"]
+        assert workflow["7"]["inputs"]["text"] == saved["negative"]
+
+
+def test_progress_counts_only_validated_images():
+    completed = []
+    run(count=3, on_progress=completed.append)
+    assert completed == [1, 2, 3]
+    completed.clear()
+    with pytest.raises(ComfyUIError):
+        run(count=3, failure="second", on_progress=completed.append)
+    assert completed == [1]
+
+
+def test_generation_awaits_each_tag_before_next_image():
+    events = []
+
+    async def tagged(image):
+        events.append(("tagged", image.position + 1))
+
+    result, _ = run(
+        count=3, on_progress=lambda count: events.append(("generated", count)), on_image=tagged
+    )
+    assert events == [
+        ("generated", 1),
+        ("tagged", 1),
+        ("generated", 2),
+        ("tagged", 2),
+        ("generated", 3),
+        ("tagged", 3),
+    ]
+    assert len(result.images) == 3
+
+
+def test_tag_failure_stops_generating_later_images():
+    generated = []
+
+    async def tagged(image):
+        if image.position == 1:
+            raise ComfyUIError("tag failed")
+
+    with pytest.raises(ComfyUIError, match="tag failed"):
+        run(count=3, on_progress=generated.append, on_image=tagged)
+    assert generated == [1, 2]
+
+
+@pytest.mark.parametrize("prompts", [[], ["sky"], ["sky", None], "sky"])
+def test_invalid_per_image_prompts_rejected(prompts):
+    with pytest.raises(ValueError, match="one positive prompt"):
+        run(positive_prompts=prompts)
 
 
 def test_unaligned_dimensions_rejected():

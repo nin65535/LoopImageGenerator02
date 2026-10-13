@@ -15,7 +15,7 @@ class Settings(BaseModel):
 
     comfyui_url: str = "http://127.0.0.1:8188"
     storage_dir: Path = ROOT / "data"
-    image_count: int = Field(default=10, ge=1)
+    image_count: int = Field(default=10, ge=6)
     width: int = Field(default=512, ge=1)
     height: int = Field(default=512, ge=1)
     shutdown_grace: int = Field(default=5, ge=1)

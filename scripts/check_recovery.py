@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import re
 import threading
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,7 +21,9 @@ from scripts.check_projects import running_app
 
 def main():
     with TemporaryDirectory(prefix="loop-recovery-") as directory:
-        settings = Settings(storage_dir=Path(directory), image_count=1, width=64, height=96)
+        settings = Settings(storage_dir=Path(directory), width=64, height=96).model_copy(
+            update={"image_count": 1}  # Isolated UI fixture, not application configuration.
+        )
         database = Database(settings.database_path)
         database.initialize()
         with database.transaction() as connection:
@@ -56,6 +59,10 @@ def main():
         async def generating(*args, **kwargs):
             entered.set()
             await asyncio.to_thread(release.wait, 20)
+            if kwargs.get("on_progress"):
+                kwargs["on_progress"](1)
+            if kwargs.get("on_image"):
+                await kwargs["on_image"](result.images[0])
             return result
 
         async def tagging(*args):
@@ -63,7 +70,7 @@ def main():
 
         with (
             patch("backend.generation_flow.generate_images", generating),
-            patch("backend.generation_storage.tag_image", tagging),
+            patch("backend.generation_flow.tag_image", tagging),
             sync_playwright() as playwright,
         ):
             browser = playwright.chromium.launch(channel="chrome", headless=True)
@@ -84,10 +91,17 @@ def main():
                         expect(
                             page.locator(".app-header").get_by_role("progressbar")
                         ).to_be_visible()
+                        expect(page.get_by_role("status").filter(has_text="経過")).to_contain_text(
+                            re.compile(r"経過 [1-9]\d*秒")
+                        )
                         page.reload()
-                        expect(
-                            page.get_by_text("画像生成・タグ付け中です…完了後に保存します。")
-                        ).to_be_visible()
+                        expect(page.get_by_role("progressbar")).to_have_attribute(
+                            "aria-valuenow", "0"
+                        )
+                        expect(page.get_by_role("status").filter(has_text="経過")).to_be_visible()
+                        expect(page.get_by_role("status").filter(has_text="経過")).to_contain_text(
+                            re.compile(r"経過 [1-9]\d*秒")
+                        )
                         expect(
                             page.locator(".app-header").get_by_role("progressbar")
                         ).to_be_visible()

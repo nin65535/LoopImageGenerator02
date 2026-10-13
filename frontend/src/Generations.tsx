@@ -5,10 +5,24 @@ type Generation = {
   id: number;
   parent_id: number | null;
   selection: { liked: number[]; disliked: number[] } | null;
-  parameters: { width?: number; height?: number };
+  parameters: {
+    width?: number;
+    height?: number;
+    carried_images?: { position: number }[];
+  };
   images: { id: number; position: number; url: string }[];
 };
 type Rating = "liked" | "disliked";
+type GenerationStatus = {
+  running: boolean;
+  percent?: number;
+  completed?: number;
+  stage?: string;
+  generated?: number;
+  tagged?: number;
+  image_count?: number;
+  elapsed_seconds?: number;
+};
 
 function Candidates({
   generation,
@@ -37,6 +51,14 @@ function Candidates({
   const disliked = Object.values(ratings).filter(
     (value) => value === "disliked",
   ).length;
+  const carriedPositions = new Set(
+    generation.parameters.carried_images?.map((image) => image.position) ?? [],
+  );
+  const displayImages = [...generation.images].sort(
+    (left, right) =>
+      Number(carriedPositions.has(right.position)) -
+      Number(carriedPositions.has(left.position)),
+  );
 
   function rate(id: number, rating?: Rating) {
     setRatings((previous) => {
@@ -56,7 +78,7 @@ function Candidates({
         {generation.images.length - liked - disliked}枚
       </p>
       <div className="candidate-grid">
-        {generation.images.map((image) => (
+        {displayImages.map((image) => (
           <article
             className="candidate"
             data-rating={ratings[image.id] ?? "unrated"}
@@ -139,7 +161,32 @@ export default function Generations({
   const [selected, setSelected] = useState<number | null>(null);
   const [state, setState] = useState("loading");
   const [busy, setBusy] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const elapsedAnchor = useRef({ seconds: 0, time: performance.now() });
+  const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
+    running: false,
+  });
   const [error, setError] = useState("");
+  function receiveStatus(data: GenerationStatus) {
+    setGenerationStatus(data);
+    if (data.elapsed_seconds !== undefined) {
+      elapsedAnchor.current = {
+        seconds: data.elapsed_seconds,
+        time: performance.now(),
+      };
+      setElapsedSeconds(data.elapsed_seconds);
+    }
+  }
+  useEffect(() => {
+    if (!busy) return;
+    const timer = setInterval(() => {
+      const anchor = elapsedAnchor.current;
+      setElapsedSeconds(
+        anchor.seconds + Math.floor((performance.now() - anchor.time) / 1000),
+      );
+    }, 250);
+    return () => clearInterval(timer);
+  }, [busy]);
   const submitting = useRef(false);
   const alive = useRef(true);
   const history = useRef<HTMLDivElement>(null);
@@ -197,6 +244,9 @@ export default function Generations({
     if (submitting.current) return;
     submitting.current = true;
     setBusy(true);
+    elapsedAnchor.current = { seconds: 0, time: performance.now() };
+    setElapsedSeconds(0);
+    setGenerationStatus({ running: true, percent: 0, stage: "preparing" });
     setError("");
     try {
       const response = await fetch(`/api/projects/${projectId}/generations`, {
@@ -215,7 +265,9 @@ export default function Generations({
             `/api/projects/${projectId}/generation-status`,
           );
           if (!status.ok) throw new Error("Status retrieval failed");
-          running = ((await status.json()) as { running: boolean }).running;
+          const data = (await status.json()) as GenerationStatus;
+          if (alive.current) receiveStatus(data);
+          running = data.running;
           if (running)
             await new Promise((resolve) => setTimeout(resolve, 1000));
         }
@@ -245,6 +297,32 @@ export default function Generations({
   }
   const [retry, setRetry] = useState(0);
   useEffect(() => {
+    if (!busy || !submitting.current) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const response = await fetch(
+          `/api/projects/${projectId}/generation-status`,
+          {
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) throw new Error("Status retrieval failed");
+        const data = (await response.json()) as GenerationStatus;
+        if (!controller.signal.aborted && data.running) receiveStatus(data);
+      } catch {
+        // Preserve the last confirmed progress; the POST reports generation failures.
+      }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 1000);
+    }
+    timer = setTimeout(poll, 1000);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [busy, projectId]);
+  useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function pollStatus() {
@@ -256,8 +334,9 @@ export default function Generations({
           },
         );
         if (!response.ok) throw new Error("Status retrieval failed");
-        const status = (await response.json()) as { running: boolean };
+        const status = (await response.json()) as GenerationStatus;
         if (controller.signal.aborted) return;
+        receiveStatus(status);
         if (status.running) timer = setTimeout(pollStatus, 1000);
         else setRetry((value) => value + 1);
       } catch {
@@ -277,6 +356,9 @@ export default function Generations({
           response.headers?.get("X-Generation-Running") === "true";
         if (!controller.signal.aborted) {
           setBusy(running);
+          elapsedAnchor.current = { seconds: 0, time: performance.now() };
+          setElapsedSeconds(0);
+          setGenerationStatus({ running, percent: 0, stage: "preparing" });
           if (running) timer = setTimeout(pollStatus, 1000);
         }
         return response.json() as Promise<Generation[]>;
@@ -314,15 +396,33 @@ export default function Generations({
     cursor = cursor.parent_id ? byId.get(cursor.parent_id) : undefined;
   }
   path.reverse();
+  const percent = generationStatus.percent ?? 0;
+  const stageLabel =
+    generationStatus.stage === "reference"
+      ? "参考画像のタグ付け中"
+      : generationStatus.stage === "generating"
+        ? `画像生成 ${generationStatus.generated ?? 0}/${generationStatus.image_count ?? "…"}枚`
+        : generationStatus.stage === "tagging"
+          ? `タグ付け ${generationStatus.tagged ?? 0}/${generationStatus.image_count ?? "…"}枚`
+          : generationStatus.stage === "saving"
+            ? "保存中"
+            : "準備中";
   const progress = (
     <div className="generation-progress">
-      <p role="status">画像生成・タグ付け中です…完了後に保存します。</p>
+      <p role="status">
+        {percent}% · 完了 {generationStatus.completed ?? 0}/
+        {generationStatus.image_count ?? "…"}枚 · {stageLabel} · 経過{" "}
+        {elapsedSeconds}秒
+      </p>
       <div
         className="generation-progress-track"
         role="progressbar"
         aria-label="画像生成・タグ付けの進行状況"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
       >
-        <span />
+        <span style={{ width: `${percent}%` }} />
       </div>
     </div>
   );

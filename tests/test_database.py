@@ -25,6 +25,8 @@ def test_config_defaults_and_relative_paths(tmp_path):
     "content",
     [
         "image_count = 0",
+        "image_count = 1",
+        "image_count = 5",
         "width = -1",
         "height = 0",
         "image_count = true",
@@ -43,6 +45,13 @@ def test_invalid_config(tmp_path, content):
 def test_explicit_missing_config(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_settings(tmp_path / "absent.toml")
+
+
+def test_minimum_generation_count(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("image_count = 6", encoding="utf-8")
+    assert load_settings(path).image_count == 6
+    assert Settings().image_count == 10
 
 
 @pytest.fixture
